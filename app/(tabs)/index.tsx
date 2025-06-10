@@ -1,75 +1,55 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+// 📁 /tabs/index.tsx - HOME SCREEN (UPDATED)
+import { StyleSheet, Text, View } from 'react-native';
+import CircularProgress from 'react-native-circular-progress-indicator';
 
 export default function HomeScreen() {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <View style={styles.container}>
+      <Text style={styles.header}>AquaSense</Text>
+      <Text style={styles.label}>Recommended Intake</Text>
+      <Text style={styles.today}>Today: 75 oz</Text>
+
+      <Text style={styles.progress}>24 oz</Text>
+      <Text style={styles.percent}>32% of goal</Text>
+
+      <View style={styles.progressContainer}>
+        <CircularProgress
+          value={32}
+          maxValue={100}
+          radius={80}
+          title={'Hydration'}
+          progressValueColor={'#007AFF'}
+          activeStrokeColor={'#00BFFF'}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      </View>
+
+      <View style={styles.alertBox}>
+        <Text style={styles.alertText}>🌡 Hot weather alert!</Text>
+        <Text style={styles.alertSub}>It’s warmer than usual today. Your hydration goal has been adjusted to keep you healthy and hydrated.</Text>
+      </View>
+
+      <Text style={styles.battery}>70% Battery Remaining</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: { flex: 1, alignItems: 'center', paddingTop: 50 },
+  header: { fontSize: 28, fontWeight: 'bold', marginBottom: 10 },
+  label: { fontSize: 16, color: '#666' },
+  today: { fontSize: 20, fontWeight: '600', marginBottom: 10 },
+  progress: { fontSize: 22, fontWeight: 'bold' },
+  percent: { fontSize: 16, color: '#333' },
+  progressContainer: { marginVertical: 20 },
+  alertBox: {
+    backgroundColor: '#FFF3CD',
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 20,
     alignItems: 'center',
-    gap: 8,
+    width: '90%',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  alertText: { fontWeight: '600' },
+  alertSub: { fontSize: 14, color: '#555', marginTop: 5, textAlign: 'center' },
+  battery: { marginTop: 30, fontSize: 14, color: '#888' },
 });
