@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import CircularProgress from 'react-native-circular-progress-indicator';
+import { Circle } from 'react-native-progress'; // NEW: Progress component
 
 export default function HomeScreen() {
   const [dailyGoal, setDailyGoal] = useState(75);
@@ -24,17 +24,16 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.progressSection}>
-        <CircularProgress
-          value={progressPercent}
-          maxValue={100}
-          radius={90}
-          title={'Hydration'}
-          progressValueColor={'#41b8d5'}
-          activeStrokeColor={'#41b8d5'}
-          inActiveStrokeColor={'#82b5c8'}
-          progressValueFontSize={40}
-          titleFontSize={14}
-          progressFormatter={(value) => `${value.toFixed(0)}%`}
+        <Circle
+          size={180}
+          progress={progressPercent / 100}
+          showsText={true}
+          formatText={() => `${progressPercent}%`}
+          color={'#41b8d5'}
+          unfilledColor={'#82b5c8'}
+          borderWidth={0}
+          thickness={10}
+          textStyle={{ fontSize: 24, fontWeight: '600', color: '#41b8d5' }}
         />
         <Text style={styles.intakeText}>{currentIntake} oz logged today</Text>
       </View>
@@ -42,7 +41,7 @@ export default function HomeScreen() {
       <View style={styles.alertCard}>
         <Text style={styles.alertTitle}>🌡️ Hot Weather Alert</Text>
         <Text style={styles.alertText}>
-           It’s warmer than usual in your area today, so we’ve adjusted your daily hydration goal to keep you properly hydrated.
+          It’s warmer than usual in your area today, so we’ve adjusted your daily hydration goal to keep you properly hydrated.
         </Text>
       </View>
 
@@ -67,9 +66,9 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: 16,
     color: '#555555',
-    marginBottom: 25,
     fontStyle: 'italic',
     textAlign: 'center',
+    marginBottom: 25,
   },
   section: {
     alignItems: 'center',
