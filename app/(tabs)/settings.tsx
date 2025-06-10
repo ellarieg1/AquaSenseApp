@@ -54,16 +54,16 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  header: { fontSize: 26, fontWeight: 'bold', marginBottom: 20 },
-  subHeader: { fontSize: 16, marginBottom: 12, color: '#666' },
+  header: { fontSize: 32, fontWeight: 'bold', marginBottom: 20 },
+  subHeader: { fontSize: 18, marginBottom: 12, color: '#666' },
   infoBlock: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#333' },
+  label: { fontSize: 16, fontWeight: '600', color: '#333' },
   input: {
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
+    padding: 14,
+    fontSize: 18,
     marginTop: 5,
     color: '#000',
   },
