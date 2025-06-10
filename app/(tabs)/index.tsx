@@ -1,55 +1,142 @@
-// 📁 /tabs/index.tsx - HOME SCREEN (UPDATED)
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import CircularProgress from 'react-native-circular-progress-indicator';
 
 export default function HomeScreen() {
+  const [dailyGoal, setDailyGoal] = useState(75);
+  const [currentIntake, setCurrentIntake] = useState(24);
+
+  const progressPercent = Math.round((currentIntake / dailyGoal) * 100);
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>AquaSense</Text>
-      <Text style={styles.label}>Recommended Intake</Text>
-      <Text style={styles.today}>Today: 75 oz</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      {/* Logo at the top */}
+      <Image
+      source={require('../../assets/images/aquasense-logo.png')}
+      style={styles.logo}
+      />
 
-      <Text style={styles.progress}>24 oz</Text>
-      <Text style={styles.percent}>32% of goal</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Recommended Intake</Text>
+        <Text style={styles.dailyGoal}>Today: {dailyGoal} oz</Text>
+      </View>
 
-      <View style={styles.progressContainer}>
+      <View style={styles.progressSection}>
         <CircularProgress
-          value={32}
+          value={progressPercent}
           maxValue={100}
-          radius={80}
+          radius={90}
           title={'Hydration'}
-          progressValueColor={'#007AFF'}
-          activeStrokeColor={'#00BFFF'}
+          progressValueColor={'#41b8d5'}
+          activeStrokeColor={'#41b8d5'}
+          inActiveStrokeColor={'#82b5c8'}
+          progressValueFontSize={24}
+          titleFontSize={16}
         />
+        <Text style={styles.intakeText}>{currentIntake} oz consumed</Text>
+        <Text style={styles.percentText}>{progressPercent}% of goal</Text>
       </View>
 
-      <View style={styles.alertBox}>
-        <Text style={styles.alertText}>🌡 Hot weather alert!</Text>
-        <Text style={styles.alertSub}>It’s warmer than usual today. Your hydration goal has been adjusted to keep you healthy and hydrated.</Text>
+      <View style={styles.alertCard}>
+        <Text style={styles.alertTitle}>🌡️ Hot Weather Alert!</Text>
+        <Text style={styles.alertText}>
+          It’s warmer than usual today. Your hydration goal has been adjusted to keep you healthy and hydrated.
+        </Text>
       </View>
 
-      <Text style={styles.battery}>70% Battery Remaining</Text>
-    </View>
+      <Text style={styles.batteryText}>🔋 70% Battery Remaining</Text>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', paddingTop: 50 },
-  header: { fontSize: 28, fontWeight: 'bold', marginBottom: 10 },
-  label: { fontSize: 16, color: '#666' },
-  today: { fontSize: 20, fontWeight: '600', marginBottom: 10 },
-  progress: { fontSize: 22, fontWeight: 'bold' },
-  percent: { fontSize: 16, color: '#333' },
-  progressContainer: { marginVertical: 20 },
-  alertBox: {
-    backgroundColor: '#FFF3CD',
-    padding: 15,
-    borderRadius: 10,
-    marginTop: 20,
+  container: {
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
-    width: '90%',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
   },
-  alertText: { fontWeight: '600' },
-  alertSub: { fontSize: 14, color: '#555', marginTop: 5, textAlign: 'center' },
-  battery: { marginTop: 30, fontSize: 14, color: '#888' },
+  logo: {
+    width: 300,
+    height: 300,
+    resizeMode: 'contain',
+    marginBottom: 10,
+  },
+  header: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#41b8d5',
+    marginBottom: 20,
+  },
+  section: {
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    padding: 15,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    color: '#555555',
+    marginBottom: 5,
+    fontWeight: '600',
+  },
+  dailyGoal: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#41b8d5',
+  },
+  progressSection: {
+    alignItems: 'center',
+    marginVertical: 20,
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    padding: 20,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  intakeText: {
+    marginTop: 15,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#555555',
+  },
+  percentText: {
+    fontSize: 16,
+    color: '#555555',
+  },
+  alertCard: {
+    backgroundColor: '#82b5c8',
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 20,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  alertTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000000',
+    marginBottom: 5,
+  },
+  alertText: {
+    fontSize: 14,
+    color: '#000000',
+  },
+  batteryText: {
+    marginTop: 30,
+    fontSize: 14,
+    color: '#555555',
+  },
 });
