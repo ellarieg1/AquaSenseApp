@@ -1,23 +1,91 @@
+import * as Location from 'expo-location';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 export default function SettingsScreen() {
-  const [location, setLocation] = useState('Fetching...');
+  const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
+  const [dailyGoal, setDailyGoal] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  // Simulate fetching location from an API
-  const fetchLocation = () => {
-    // Here you’d use react-native-location, Expo Location, or another library
-    // For now, we'll simulate a successful API call
-    setTimeout(() => {
-      setLocation('Villanova, PA'); // Simulated location result
-    }, 1000);
+  const fetchLocation = async () => {
+    try {
+      setLoading(true);
+
+      // 1️⃣ Request permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Location permission was denied.');
+      }
+
+      // 2️⃣ Try to get current coordinates
+      let loc;
+      try {
+        loc = await Location.getCurrentPositionAsync({});
+      } catch (err) {
+        console.log('Error fetching current location:', err.message);
+      }
+
+      let latitude, longitude;
+      if (loc && loc.coords) {
+        latitude = loc.coords.latitude;
+        longitude = loc.coords.longitude;
+        console.log('Latitude:', latitude, 'Longitude:', longitude);
+      } else {
+        // Fallback coordinates (New York City)
+        latitude = 40.7128;
+        longitude = -74.0060;
+        console.log('Using fallback coordinates:', latitude, longitude);
+      }
+
+      // 3️⃣ Reverse geocode
+      let city, region;
+      try {
+        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        console.log('Reverse geocode result:', reverse);
+
+        if (reverse && reverse.length > 0) {
+          city = reverse[0]?.city || 'Unknown City';
+          region = reverse[0]?.region || 'Unknown Region';
+        } else if (latitude === 40.7128 && longitude === -74.0060) {
+          city = 'New York';
+          region = 'New York';
+        } else {
+          city = 'Unknown City';
+          region = 'Unknown Region';
+        }
+      } catch (geoError) {
+        console.log('Error during reverse geocoding:', geoError);
+        if (latitude === 40.7128 && longitude === -74.0060) {
+          city = 'New York';
+          region = 'New York';
+        } else {
+          city = 'Unknown City';
+          region = 'Unknown Region';
+        }
+      }
+
+      setLocation(`${city}, ${region}`);
+    } catch (err: any) {
+      console.error('Error:', err.message);
+      Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = () => {
-    Alert.alert('Preferences Saved!', 'Your preferences have been updated successfully.');
-    // Later: Save to async storage or backend
+    Alert.alert('Preferences Saved', 'Your settings have been updated.');
+    // TODO: Save to AsyncStorage or backend
   };
 
   return (
@@ -25,16 +93,20 @@ export default function SettingsScreen() {
       <Text style={styles.header}>Settings</Text>
       <Text style={styles.tagline}>Personalize your hydration goals</Text>
 
+      {/* Location */}
       <View style={styles.infoBlock}>
-        <Text style={styles.label}>Location (from device)</Text>
-        <View style={styles.locationContainer}>
-          <Text style={styles.locationText}>{location}</Text>
-          <TouchableOpacity style={styles.fetchButton} onPress={fetchLocation}>
-            <Text style={styles.fetchButtonText}>Fetch Location</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.label}>Current Location:</Text>
+        <Text style={styles.locationText}>{location}</Text>
       </View>
+      <TouchableOpacity style={styles.fetchButton} onPress={fetchLocation}>
+        {loading ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <Text style={styles.fetchButtonText}>Fetch Location</Text>
+        )}
+      </TouchableOpacity>
 
+      {/* Weight Input */}
       <View style={styles.infoBlock}>
         <Text style={styles.label}>Weight (lbs)</Text>
         <TextInput
@@ -43,10 +115,10 @@ export default function SettingsScreen() {
           onChangeText={setWeight}
           keyboardType="numeric"
           placeholder="e.g. 160"
-          placeholderTextColor="#aaa"
         />
       </View>
 
+      {/* Exercise Hours Input */}
       <View style={styles.infoBlock}>
         <Text style={styles.label}>Exercise Hours per Day</Text>
         <TextInput
@@ -55,10 +127,18 @@ export default function SettingsScreen() {
           onChangeText={setExerciseHours}
           keyboardType="numeric"
           placeholder="e.g. 1"
-          placeholderTextColor="#aaa"
         />
       </View>
 
+      {/* Daily Goal (for later) */}
+      {dailyGoal > 0 && (
+        <View style={styles.goalBlock}>
+          <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
+          <Text style={styles.goalValue}>{dailyGoal} oz</Text>
+        </View>
+      )}
+
+      {/* Save Preferences Button */}
       <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
         <Text style={styles.saveButtonText}>Save Preferences</Text>
       </TouchableOpacity>
@@ -74,16 +154,15 @@ const styles = StyleSheet.create({
     paddingTop: 40,
   },
   header: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: '#41b8d5',
-    marginBottom: 8,
     textAlign: 'center',
+    marginBottom: 10,
   },
   tagline: {
     fontSize: 16,
-    color: '#555555',
-    fontStyle: 'italic',
+    color: '#555',
     textAlign: 'center',
     marginBottom: 25,
   },
@@ -93,36 +172,26 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#555555',
+    color: '#555',
     marginBottom: 6,
   },
-  locationContainer: {
-    backgroundColor: '#F9F9F9',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
-  },
   locationText: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#000',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   fetchButton: {
     backgroundColor: '#41b8d5',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    alignItems: 'center',
+    marginBottom: 20,
   },
   fetchButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
   input: {
@@ -134,21 +203,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     fontSize: 16,
     color: '#000',
+  },
+  goalBlock: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 20,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
+    shadowRadius: 10,
+    elevation: 3,
+    marginVertical: 20,
+  },
+  goalLabel: {
+    fontSize: 18,
+    color: '#555',
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  goalValue: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#41b8d5',
   },
   saveButton: {
     backgroundColor: '#41b8d5',
     paddingVertical: 15,
     borderRadius: 25,
     alignItems: 'center',
-    marginTop: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 2,
+    marginTop: 10,
   },
   saveButtonText: {
     color: '#FFFFFF',
