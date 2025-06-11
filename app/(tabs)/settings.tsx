@@ -15,9 +15,10 @@ export default function SettingsScreen() {
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
   const [dailyGoal, setDailyGoal] = useState(0);
+  const [temperature, setTemperature] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchLocation = async () => {
+  const fetchLocationAndWeather = async () => {
     try {
       setLoading(true);
 
@@ -75,6 +76,42 @@ export default function SettingsScreen() {
       }
 
       setLocation(`${city}, ${region}`);
+
+      // 4️⃣ Fetch weather
+      const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
+      const weatherUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
+      console.log('Weather API URL:', weatherUrl);
+
+      const weatherResp = await fetch(weatherUrl);
+      const weatherData = await weatherResp.json();
+      console.log('Weather Data:', weatherData);
+
+      if (!weatherData.current || !weatherData.current.temp) {
+        throw new Error('Weather data is unavailable.');
+      }
+
+      const temp = weatherData.current.temp;
+      setTemperature(temp);
+      console.log('Current temperature:', temp);
+
+      // 5️⃣ Calculate additional water
+      let additionalWater = 0;
+      if (temp >= 95) additionalWater = 20;
+      else if (temp >= 90) additionalWater = 16;
+      else if (temp >= 85) additionalWater = 12;
+      else if (temp >= 75) additionalWater = 8;
+      else if (temp >= 60) additionalWater = 4;
+
+      // 6️⃣ Calculate daily goal
+      const baseGoal =
+        parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12;
+      const adjustedGoal = Math.round(baseGoal + additionalWater);
+      setDailyGoal(adjustedGoal);
+
+      Alert.alert(
+        'Hydration Goal Updated!',
+        `Today's hydration goal: ${adjustedGoal} oz (Temperature: ${temp}°F)`
+      );
     } catch (err: any) {
       console.error('Error:', err.message);
       Alert.alert('Error', err.message);
@@ -85,7 +122,6 @@ export default function SettingsScreen() {
 
   const handleSave = () => {
     Alert.alert('Preferences Saved', 'Your settings have been updated.');
-    // TODO: Save to AsyncStorage or backend
   };
 
   return (
@@ -98,13 +134,21 @@ export default function SettingsScreen() {
         <Text style={styles.label}>Current Location:</Text>
         <Text style={styles.locationText}>{location}</Text>
       </View>
-      <TouchableOpacity style={styles.fetchButton} onPress={fetchLocation}>
+      <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
         {loading ? (
           <ActivityIndicator color="#FFFFFF" />
         ) : (
-          <Text style={styles.fetchButtonText}>Fetch Location</Text>
+          <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>
         )}
       </TouchableOpacity>
+
+      {/* Weather */}
+      {temperature !== null && (
+        <View style={styles.infoBlock}>
+          <Text style={styles.label}>Current Temperature:</Text>
+          <Text style={styles.temperatureText}>{temperature}°F</Text>
+        </View>
+      )}
 
       {/* Weight Input */}
       <View style={styles.infoBlock}>
@@ -130,7 +174,7 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* Daily Goal (for later) */}
+      {/* Daily Goal */}
       {dailyGoal > 0 && (
         <View style={styles.goalBlock}>
           <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
@@ -168,6 +212,7 @@ const styles = StyleSheet.create({
   },
   infoBlock: {
     marginBottom: 20,
+    alignItems: 'center',
   },
   label: {
     fontSize: 16,
@@ -176,6 +221,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   locationText: {
+    fontSize: 18,
+    color: '#000',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  temperatureText: {
     fontSize: 18,
     color: '#000',
     fontWeight: '600',
@@ -203,6 +254,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     fontSize: 16,
     color: '#000',
+    width: '100%',
   },
   goalBlock: {
     alignItems: 'center',
