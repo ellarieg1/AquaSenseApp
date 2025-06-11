@@ -1,3 +1,6 @@
+// 📁 /tabs/settings.tsx
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { useState } from 'react';
 import {
@@ -15,7 +18,7 @@ export default function SettingsScreen() {
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
   const [dailyGoal, setDailyGoal] = useState(0);
-  const [temperature, setTemperature] = useState(null);
+  const [temperature, setTemperature] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchLocationAndWeather = async () => {
@@ -32,15 +35,14 @@ export default function SettingsScreen() {
       let loc;
       try {
         loc = await Location.getCurrentPositionAsync({});
-      } catch (err) {
+      } catch (err: any) {
         console.log('Error fetching current location:', err.message);
       }
 
-      let latitude, longitude;
+      let latitude: number, longitude: number;
       if (loc && loc.coords) {
         latitude = loc.coords.latitude;
         longitude = loc.coords.longitude;
-        console.log('Latitude:', latitude, 'Longitude:', longitude);
       } else {
         // Fallback coordinates (New York City)
         latitude = 40.7128;
@@ -49,11 +51,9 @@ export default function SettingsScreen() {
       }
 
       // 3️⃣ Reverse geocode
-      let city, region;
+      let city: string, region: string;
       try {
         const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
-        console.log('Reverse geocode result:', reverse);
-
         if (reverse && reverse.length > 0) {
           city = reverse[0]?.city || 'Unknown City';
           region = reverse[0]?.region || 'Unknown Region';
@@ -74,25 +74,18 @@ export default function SettingsScreen() {
           region = 'Unknown Region';
         }
       }
-
       setLocation(`${city}, ${region}`);
 
-      // 4️⃣ Fetch weather
+      // 4️⃣ Fetch weather via One Call API 3.0
       const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
       const weatherUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
-      console.log('Weather API URL:', weatherUrl);
-
       const weatherResp = await fetch(weatherUrl);
       const weatherData = await weatherResp.json();
-      console.log('Weather Data:', weatherData);
-
-      if (!weatherData.current || !weatherData.current.temp) {
+      if (!weatherData.current?.temp) {
         throw new Error('Weather data is unavailable.');
       }
-
       const temp = weatherData.current.temp;
       setTemperature(temp);
-      console.log('Current temperature:', temp);
 
       // 5️⃣ Calculate additional water
       let additionalWater = 0;
@@ -102,15 +95,17 @@ export default function SettingsScreen() {
       else if (temp >= 75) additionalWater = 8;
       else if (temp >= 60) additionalWater = 4;
 
-      // 6️⃣ Calculate daily goal
+      // 6️⃣ Calculate and save daily goal
       const baseGoal =
         parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12;
       const adjustedGoal = Math.round(baseGoal + additionalWater);
       setDailyGoal(adjustedGoal);
 
+      await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
+
       Alert.alert(
         'Hydration Goal Updated!',
-        `Today's hydration goal: ${adjustedGoal} oz (Temperature: ${temp}°F)`
+        `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}°F)`
       );
     } catch (err: any) {
       console.error('Error:', err.message);
@@ -129,20 +124,25 @@ export default function SettingsScreen() {
       <Text style={styles.header}>Settings</Text>
       <Text style={styles.tagline}>Personalize your hydration goals</Text>
 
-      {/* Location */}
+      {/* Location & Weather */}
       <View style={styles.infoBlock}>
         <Text style={styles.label}>Current Location:</Text>
         <Text style={styles.locationText}>{location}</Text>
       </View>
-      <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
+      <TouchableOpacity
+        style={styles.fetchButton}
+        onPress={fetchLocationAndWeather}
+      >
         {loading ? (
           <ActivityIndicator color="#FFFFFF" />
         ) : (
-          <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>
+          <Text style={styles.fetchButtonText}>
+            Fetch Location & Weather
+          </Text>
         )}
       </TouchableOpacity>
 
-      {/* Weather */}
+      {/* Temperature Display */}
       {temperature !== null && (
         <View style={styles.infoBlock}>
           <Text style={styles.label}>Current Temperature:</Text>
@@ -174,7 +174,7 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* Daily Goal */}
+      {/* Daily Goal Display */}
       {dailyGoal > 0 && (
         <View style={styles.goalBlock}>
           <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
@@ -224,13 +224,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#000',
     fontWeight: '600',
-    textAlign: 'center',
   },
   temperatureText: {
     fontSize: 18,
     color: '#000',
     fontWeight: '600',
-    textAlign: 'center',
   },
   fetchButton: {
     backgroundColor: '#41b8d5',

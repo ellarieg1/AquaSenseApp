@@ -1,6 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Circle } from 'react-native-progress'; // NEW: Progress component
+import { Circle } from 'react-native-progress';
 
 export default function HomeScreen() {
   const [dailyGoal, setDailyGoal] = useState(75);
@@ -8,9 +10,25 @@ export default function HomeScreen() {
 
   const progressPercent = Math.round((currentIntake / dailyGoal) * 100);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadDailyGoal = async () => {
+        try {
+          const storedGoal = await AsyncStorage.getItem('dailyGoal');
+          if (storedGoal) {
+            setDailyGoal(parseInt(storedGoal, 10));
+          }
+        } catch (err) {
+          console.error('Error loading daily goal:', err);
+        }
+      };
+
+      loadDailyGoal();
+    }, [])
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {/* Logo at the top */}
       <Image
         source={require('../../assets/images/aquasense-logo.png')}
         style={styles.logo}
