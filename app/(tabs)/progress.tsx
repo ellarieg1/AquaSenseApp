@@ -1,9 +1,16 @@
 import React from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text } from 'react-native';
+import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
+import { Circle } from 'react-native-progress';
+import { useSettings } from '../../context/SettingsContext';
 
 export default function ProgressScreen() {
   const screenWidth = Dimensions.get('window').width;
+  const { settings } = useSettings();
+
+  const currentIntake = 56; // Replace with actual tracked value
+  const dailyGoal = settings.dailyGoal || (settings.weight / 2 + settings.exerciseHours * 12);
+  const progressPercent = Math.min(currentIntake / dailyGoal, 1);
 
   const chartConfig = {
     backgroundGradientFrom: '#f5f5f5',
@@ -33,6 +40,26 @@ export default function ProgressScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* Today's Progress Section */}
+      <View style={styles.todaySection}>
+        <Text style={styles.sectionTitle}>Today's Progress</Text>
+        <Circle
+          size={160}
+          progress={progressPercent}
+          showsText
+          formatText={() => `${Math.round(progressPercent * 100)}%`}
+          color={'#41b8d5'}
+          unfilledColor={'#d3f2fa'}
+          borderWidth={0}
+          thickness={10}
+          textStyle={{ fontSize: 22, fontWeight: 'bold', color: '#41b8d5' }}
+        />
+        <Text style={styles.todayText}>
+          {currentIntake} oz of {Math.round(dailyGoal)} oz goal
+        </Text>
+      </View>
+
+      {/* Weekly Chart Section */}
       <Text style={styles.title}>Weekly Hydration Progress</Text>
       <LineChart
         data={hydrationData}
@@ -42,9 +69,6 @@ export default function ProgressScreen() {
         bezier
         style={styles.chart}
       />
-      <Text style={styles.description}>
-        Stay consistent with your hydration goals to unlock more achievements!
-      </Text>
     </ScrollView>
   );
 }
@@ -59,16 +83,26 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '700',
+    marginTop: 40,
     marginBottom: 20,
     color: '#41b8d5',
   },
   chart: {
     borderRadius: 16,
   },
-  description: {
-    marginTop: 20,
+  todaySection: {
+    marginBottom: 40,
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 15,
+    color: '#555',
+  },
+  todayText: {
     fontSize: 16,
     color: '#555',
-    textAlign: 'center',
+    marginTop: 16,
   },
 });

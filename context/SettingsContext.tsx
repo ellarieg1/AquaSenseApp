@@ -6,6 +6,7 @@ type SettingsType = {
   weight: number;
   exerciseHours: number;
   climate: ClimateType;
+  dailyGoal: number;
 };
 
 type SettingsContextType = {
@@ -17,6 +18,7 @@ const defaultSettings: SettingsType = {
   weight: 150,
   exerciseHours: 0,
   climate: 'moderate',
+  dailyGoal: 75,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
