@@ -6,10 +6,15 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 
@@ -25,13 +30,11 @@ export default function SettingsScreen() {
     try {
       setLoading(true);
 
-      // 1️⃣ Request permission
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         throw new Error('Location permission was denied.');
       }
 
-      // 2️⃣ Try to get current coordinates
       let loc;
       try {
         loc = await Location.getCurrentPositionAsync({});
@@ -44,39 +47,39 @@ export default function SettingsScreen() {
         latitude = loc.coords.latitude;
         longitude = loc.coords.longitude;
       } else {
-        // Fallback coordinates (New York City)
         latitude = 40.7128;
         longitude = -74.0060;
         console.log('Using fallback coordinates:', latitude, longitude);
       }
 
-      // 3️⃣ Reverse geocode
-      let city: string, region: string;
+      let city = 'Unknown City';
+      let region = 'Unknown Region';
       try {
         const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        console.log('Reverse geocode result:', reverse);
+
         if (reverse && reverse.length > 0) {
-          city = reverse[0]?.city || 'Unknown City';
-          region = reverse[0]?.region || 'Unknown Region';
-        } else if (latitude === 40.7128 && longitude === -74.0060) {
-          city = 'New York';
-          region = 'New York';
-        } else {
-          city = 'Unknown City';
-          region = 'Unknown Region';
+          const place = reverse[0];
+          city =
+            place.city ||
+            place.name ||
+            place.subregion ||
+            (latitude === 40.7128 ? 'New York' : 'Unknown City');
+          region =
+            place.region ||
+            place.country ||
+            (latitude === 40.7128 ? 'New York' : 'Unknown Region');
         }
       } catch (geoError) {
         console.log('Error during reverse geocoding:', geoError);
         if (latitude === 40.7128 && longitude === -74.0060) {
           city = 'New York';
           region = 'New York';
-        } else {
-          city = 'Unknown City';
-          region = 'Unknown Region';
         }
       }
+
       setLocation(`${city}, ${region}`);
 
-      // 4️⃣ Fetch weather via One Call API 3.0
       const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
       const weatherUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
       const weatherResp = await fetch(weatherUrl);
@@ -87,7 +90,6 @@ export default function SettingsScreen() {
       const temp = weatherData.current.temp;
       setTemperature(temp);
 
-      // 5️⃣ Calculate additional water
       let additionalWater = 0;
       if (temp >= 95) additionalWater = 20;
       else if (temp >= 90) additionalWater = 16;
@@ -95,7 +97,6 @@ export default function SettingsScreen() {
       else if (temp >= 75) additionalWater = 8;
       else if (temp >= 60) additionalWater = 4;
 
-      // 6️⃣ Calculate and save daily goal
       const baseGoal =
         parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12;
       const adjustedGoal = Math.round(baseGoal + additionalWater);
@@ -105,7 +106,7 @@ export default function SettingsScreen() {
 
       Alert.alert(
         'Hydration Goal Updated!',
-        `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}°F)`
+        `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}\u00b0F)`
       );
     } catch (err: any) {
       console.error('Error:', err.message);
@@ -116,83 +117,84 @@ export default function SettingsScreen() {
   };
 
   const handleSave = () => {
+    Keyboard.dismiss();
     Alert.alert('Preferences Saved', 'Your settings have been updated.');
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Settings</Text>
-      <Text style={styles.tagline}>Personalize your hydration goals</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.header}>Settings</Text>
+          <Text style={styles.tagline}>Personalize your hydration goals</Text>
 
-      {/* Location & Weather */}
-      <View style={styles.infoBlock}>
-        <Text style={styles.label}>Current Location:</Text>
-        <Text style={styles.locationText}>{location}</Text>
-      </View>
-      <TouchableOpacity
-        style={styles.fetchButton}
-        onPress={fetchLocationAndWeather}
-      >
-        {loading ? (
-          <ActivityIndicator color="#FFFFFF" />
-        ) : (
-          <Text style={styles.fetchButtonText}>
-            Fetch Location & Weather
-          </Text>
-        )}
-      </TouchableOpacity>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Current Location:</Text>
+            <Text style={styles.locationText}>{location}</Text>
+          </View>
 
-      {/* Temperature Display */}
-      {temperature !== null && (
-        <View style={styles.infoBlock}>
-          <Text style={styles.label}>Current Temperature:</Text>
-          <Text style={styles.temperatureText}>{temperature}°F</Text>
-        </View>
-      )}
+          <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>
+            )}
+          </TouchableOpacity>
 
-      {/* Weight Input */}
-      <View style={styles.infoBlock}>
-        <Text style={styles.label}>Weight (lbs)</Text>
-        <TextInput
-          style={styles.input}
-          value={weight}
-          onChangeText={setWeight}
-          keyboardType="numeric"
-          placeholder="e.g. 160"
-        />
-      </View>
+          {temperature !== null && (
+            <View style={styles.infoBlock}>
+              <Text style={styles.label}>Current Temperature:</Text>
+              <Text style={styles.temperatureText}>{temperature}°F</Text>
+            </View>
+          )}
 
-      {/* Exercise Hours Input */}
-      <View style={styles.infoBlock}>
-        <Text style={styles.label}>Exercise Hours per Day</Text>
-        <TextInput
-          style={styles.input}
-          value={exerciseHours}
-          onChangeText={setExerciseHours}
-          keyboardType="numeric"
-          placeholder="e.g. 1"
-        />
-      </View>
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Weight (lbs)</Text>
+            <TextInput
+              style={styles.input}
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="numeric"
+              placeholder="e.g. 160"
+            />
+          </View>
 
-      {/* Daily Goal Display */}
-      {dailyGoal > 0 && (
-        <View style={styles.goalBlock}>
-          <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
-          <Text style={styles.goalValue}>{dailyGoal} oz</Text>
-        </View>
-      )}
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Exercise Hours per Day</Text>
+            <TextInput
+              style={styles.input}
+              value={exerciseHours}
+              onChangeText={setExerciseHours}
+              keyboardType="numeric"
+              placeholder="e.g. 1"
+            />
+          </View>
 
-      {/* Save Preferences Button */}
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Preferences</Text>
-      </TouchableOpacity>
-    </View>
+          {dailyGoal > 0 && (
+            <View style={styles.goalBlock}>
+              <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
+              <Text style={styles.goalValue}>{dailyGoal} oz</Text>
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <Text style={styles.saveButtonText}>Save Preferences</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingTop: 40,
