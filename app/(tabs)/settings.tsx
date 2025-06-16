@@ -17,10 +17,12 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { useSettings } from '../../context/SettingsContext';
 
 // Setting screem which allows users to input their weight, exercise hours, and fetch their current location and weather to calculate a hydration goal.
 export default function SettingsScreen() {
   // state variables
+  const { updateSettings } = useSettings();
   const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
@@ -109,7 +111,7 @@ export default function SettingsScreen() {
       let ageAdjustment = 0;
 
       //apply age adjustment if age is provided
-      if (!isNaN(ageNum)) {
+      if (!isNaN(ageNum)) { //check if age is a valid number and returns true if number
         if (ageNum >= 60) {
           ageAdjustment = -10; //older adults need less whater
         }
@@ -117,7 +119,7 @@ export default function SettingsScreen() {
         ageAdjustment = 5;  //younger needs more water
         }
       }
-      
+
       //FORMULA: calculates hydration goal by taking half of user's weight in oz + 12oz per hour of exercise
       const baseGoal =
         parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12 + ageAdjustment;
@@ -126,6 +128,13 @@ export default function SettingsScreen() {
 
       //allows hydration goal to carry over to other screens
       await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
+      
+      //update context
+      updateSettings({
+        dailyGoal: adjustedGoal,
+        weight: parseInt(weight, 10),
+        exerciseHours: parseInt(exerciseHours, 10),
+      });
 
       //alert notification for new goal
       Alert.alert(

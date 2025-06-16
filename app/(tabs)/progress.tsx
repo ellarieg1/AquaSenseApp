@@ -8,7 +8,7 @@ export default function ProgressScreen() {
   const screenWidth = Dimensions.get('window').width;
   const { settings } = useSettings();
 
-  const currentIntake = 56; // Replace with actual tracked value
+  const currentIntake = 24; // Replace with actual tracked value
   const dailyGoal = settings.dailyGoal || (settings.weight / 2 + settings.exerciseHours * 12);
   const progressPercent = Math.min(currentIntake / dailyGoal, 1);
 
