@@ -24,6 +24,7 @@ export default function SettingsScreen() {
   const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
+  const [age, setAge] = useState('25'); 
   const [dailyGoal, setDailyGoal] = useState(0);
   const [temperature, setTemperature] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -184,6 +185,17 @@ export default function SettingsScreen() {
               onChangeText={setExerciseHours}
               keyboardType="numeric"
               placeholder="e.g. 1"
+            />
+          </View>
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.label}>Age (optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={age}
+              onChangeText={setAge}
+              keyboardType="numeric"
+              placeholder="e.g. 25"
             />
           </View>
 
