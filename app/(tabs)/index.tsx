@@ -5,15 +5,18 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Circle } from 'react-native-progress';
 
 export default function HomeScreen() {
+  //state variables to store daily goal and current intake
   const [dailyGoal, setDailyGoal] = useState(75);
   const [currentIntake, setCurrentIntake] = useState(24);
 
   const progressPercent = Math.round((currentIntake / dailyGoal) * 100);
 
+  //loads hydration data from storage when screens is focused
   useFocusEffect(
     React.useCallback(() => {
       const loadDailyGoal = async () => {
         try {
+          //tries to fetch saved daily goal from AsyncStorage; if none then defaults to 75 oz
           const storedGoal = await AsyncStorage.getItem('dailyGoal');
           if (storedGoal) {
             setDailyGoal(parseInt(storedGoal, 10));
@@ -68,6 +71,7 @@ export default function HomeScreen() {
   );
 }
 
+//styles for Home Screen
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',

@@ -26,6 +26,8 @@ export default function TabLayout() {
           default: {},
         }),
       }}>
+
+      {/* Home Tab */}
       <Tabs.Screen
         name="index"
         options={{
@@ -33,6 +35,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
       />
+
+      {/* Settings Tab*/}
       <Tabs.Screen
         name="settings"
         options={{
@@ -40,6 +44,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
         }}
       />
+
+      {/* Achievements Tab*/}
       <Tabs.Screen
         name="achievements"
         options={{
@@ -47,11 +53,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="star.fill" color={color} />,
         }}
       />
+
+      {/* Progress Tab*/}
       <Tabs.Screen
         name="progress"
         options={{
           title: 'Progress',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="star.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="chart.bar.fill" color={color} />,
         }}
       />
     </Tabs>

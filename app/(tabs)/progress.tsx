@@ -28,6 +28,7 @@ export default function ProgressScreen() {
     },
   };
 
+  //sample hydration data for the weekly chart
   const hydrationData = {
     labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     datasets: [
@@ -73,6 +74,7 @@ export default function ProgressScreen() {
   );
 }
 
+//styles for Progress Screen
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',

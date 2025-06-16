@@ -18,7 +18,9 @@ import {
   View,
 } from 'react-native';
 
+// Setting screem which allows users to input their weight, exercise hours, and fetch their current location and weather to calculate a hydration goal.
 export default function SettingsScreen() {
+  // state variables
   const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
@@ -26,6 +28,7 @@ export default function SettingsScreen() {
   const [temperature, setTemperature] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
+  //function to get user location and temperature to calculate hydration goal
   const fetchLocationAndWeather = async () => {
     try {
       setLoading(true);
@@ -35,6 +38,7 @@ export default function SettingsScreen() {
         throw new Error('Location permission was denied.');
       }
 
+      //attempts to fetch current location coordinates
       let loc;
       try {
         loc = await Location.getCurrentPositionAsync({});
@@ -42,6 +46,7 @@ export default function SettingsScreen() {
         console.log('Error fetching current location:', err.message);
       }
 
+      //fallback locations if location fetch fails -- defaults to New York City
       let latitude: number, longitude: number;
       if (loc && loc.coords) {
         latitude = loc.coords.latitude;
@@ -80,6 +85,7 @@ export default function SettingsScreen() {
 
       setLocation(`${city}, ${region}`);
 
+      //construct weather API URL and fetch current temperature
       const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
       const weatherUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
       const weatherResp = await fetch(weatherUrl);
@@ -88,8 +94,9 @@ export default function SettingsScreen() {
         throw new Error('Weather data is unavailable.');
       }
       const temp = weatherData.current.temp;
-      setTemperature(temp);
+      setTemperature(temp); //saves current temperature
 
+      //adds additional water based on temperature
       let additionalWater = 0;
       if (temp >= 95) additionalWater = 20;
       else if (temp >= 90) additionalWater = 16;
@@ -97,13 +104,16 @@ export default function SettingsScreen() {
       else if (temp >= 75) additionalWater = 8;
       else if (temp >= 60) additionalWater = 4;
 
+      //FORMULA: calcilates hydration goal by taking half of user's weight in oz + 12oz per hour of exercise
       const baseGoal =
         parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12;
-      const adjustedGoal = Math.round(baseGoal + additionalWater);
+      const adjustedGoal = Math.round(baseGoal + additionalWater); //final daily goal
       setDailyGoal(adjustedGoal);
 
+      //allows hydration goal to carry over to other screens
       await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
 
+      //alert notification for new goal
       Alert.alert(
         'Hydration Goal Updated!',
         `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}\u00b0F)`
@@ -116,6 +126,7 @@ export default function SettingsScreen() {
     }
   };
 
+  //called when user clicks save button
   const handleSave = () => {
     Keyboard.dismiss();
     Alert.alert('Preferences Saved', 'Your settings have been updated.');
@@ -192,6 +203,7 @@ export default function SettingsScreen() {
   );
 }
 
+//styles for Settings Screen
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
