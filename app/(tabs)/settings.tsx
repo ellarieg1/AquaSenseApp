@@ -112,11 +112,11 @@ export default function SettingsScreen() {
 
       //apply age adjustment if age is provided
       if (!isNaN(ageNum)) { //check if age is a valid number and returns true if number
-        if (ageNum >= 60) {
-          ageAdjustment = -10; //older adults need less whater
+        if (ageNum >= 65) {
+          ageAdjustment = 12; //older adults need less whater
         }
       else if (ageNum <= 18) {
-        ageAdjustment = 5;  //younger needs more water
+        ageAdjustment = 10;  //younger needs more water
         }
       }
 
