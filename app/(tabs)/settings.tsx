@@ -18,6 +18,7 @@ import {
 
 // Settings screen which allows users to input their weight, exercise hours, and fetch their current location and weather to calculate a hydration goal.
 export default function SettingsScreen() {
+  // state variables
   const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('160');
   const [exerciseHours, setExerciseHours] = useState('1');
@@ -99,6 +100,7 @@ export default function SettingsScreen() {
       const ageNum = parseInt(age, 10);
       let ageAdjustment = 0;
 
+      //apply age adjustment if age is provided
       if (!isNaN(ageNum)) {
         if (ageNum >= 60) {
           ageAdjustment = -10;
@@ -106,13 +108,21 @@ export default function SettingsScreen() {
           ageAdjustment = 5;
         }
       }
-
+      
+      //FORMULA: calculates hydration goal by taking half of user's weight in oz + 12oz per hour of exercise
       const baseGoal =
         parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12 + ageAdjustment;
       const adjustedGoal = Math.round(baseGoal + additionalWater);
       setDailyGoal(adjustedGoal);
 
       await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
+      
+      //update context
+      updateSettings({
+        dailyGoal: adjustedGoal,
+        weight: parseInt(weight, 10),
+        exerciseHours: parseInt(exerciseHours, 10),
+      });
 
       Alert.alert(
         'Hydration Goal Updated!',
