@@ -105,9 +105,22 @@ export default function SettingsScreen() {
       else if (temp >= 75) additionalWater = 8;
       else if (temp >= 60) additionalWater = 4;
 
-      //FORMULA: calcilates hydration goal by taking half of user's weight in oz + 12oz per hour of exercise
+      const ageNum = parseInt(age, 10);
+      let ageAdjustment = 0;
+
+      //apply age adjustment if age is provided
+      if (!isNaN(ageNum)) {
+        if (ageNum >= 60) {
+          ageAdjustment = -10; //older adults need less whater
+        }
+      else if (ageNum <= 18) {
+        ageAdjustment = 5;  //younger needs more water
+        }
+      }
+      
+      //FORMULA: calculates hydration goal by taking half of user's weight in oz + 12oz per hour of exercise
       const baseGoal =
-        parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12;
+        parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12 + ageAdjustment;
       const adjustedGoal = Math.round(baseGoal + additionalWater); //final daily goal
       setDailyGoal(adjustedGoal);
 
