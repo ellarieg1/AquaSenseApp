@@ -6,18 +6,15 @@ import { Circle } from 'react-native-progress';
 import { requestNotificationPermissions, scheduleReminder } from '../../utils/notificationUtils';
 
 export default function HomeScreen() {
-  //state variables to store daily goal and current intake
   const [dailyGoal, setDailyGoal] = useState(75);
   const [currentIntake, setCurrentIntake] = useState(24);
 
   const progressPercent = Math.round((currentIntake / dailyGoal) * 100);
 
-  //loads hydration data from storage when screens is focused
   useFocusEffect(
     React.useCallback(() => {
       const loadDailyGoal = async () => {
         try {
-          //tries to fetch saved daily goal from AsyncStorage; if none then defaults to 75 oz
           const storedGoal = await AsyncStorage.getItem('dailyGoal');
           if (storedGoal) {
             setDailyGoal(parseInt(storedGoal, 10));
@@ -65,8 +62,8 @@ export default function HomeScreen() {
           progress={progressPercent / 100}
           showsText={true}
           formatText={() => `${progressPercent}%`}
-          color={'#41b8d5'}
-          unfilledColor={'#82b5c8'}
+          color={'#41b8d5'} // Original color kept
+          unfilledColor={'#82b5c8'} // Original color kept
           borderWidth={0}
           thickness={10}
           textStyle={{ fontSize: 24, fontWeight: '600', color: '#41b8d5' }}
@@ -86,13 +83,13 @@ export default function HomeScreen() {
   );
 }
 
-//styles for Home Screen
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     paddingVertical: 40,
     paddingHorizontal: 20,
+    fontFamily: 'San Francisco', // Apple's default system font
   },
   logo: {
     width: 140,
@@ -106,6 +103,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 25,
+    fontFamily: 'San Francisco',
   },
   section: {
     alignItems: 'center',
@@ -124,11 +122,12 @@ const styles = StyleSheet.create({
     color: '#555555',
     marginBottom: 8,
     fontWeight: '600',
+    fontFamily: 'San Francisco',
   },
   dailyGoal: {
     fontSize: 30,
     fontWeight: 'bold',
-    color: '#41b8d5',
+    color: '#41b8d5', // Original color kept
   },
   progressSection: {
     alignItems: 'center',
@@ -147,9 +146,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '500',
     color: '#555555',
+    fontFamily: 'San Francisco',
   },
   alertCard: {
-    backgroundColor: '#82b5c8',
+    backgroundColor: '#82b5c8', // Original color kept
     padding: 20,
     borderRadius: 20,
     marginTop: 20,
@@ -164,15 +164,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#000000',
     marginBottom: 8,
+    fontFamily: 'San Francisco',
   },
   alertText: {
     fontSize: 14,
     color: '#000000',
     lineHeight: 20,
+    fontFamily: 'San Francisco',
   },
   batteryText: {
     marginTop: 30,
     fontSize: 14,
     color: '#555555',
+    fontFamily: 'San Francisco',
   },
 });
