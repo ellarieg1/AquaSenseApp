@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Circle } from 'react-native-progress';
+import { requestNotificationPermissions, scheduleReminder } from '../../utils/notificationUtils';
 
 export default function HomeScreen() {
   //state variables to store daily goal and current intake
@@ -29,6 +30,20 @@ export default function HomeScreen() {
       loadDailyGoal();
     }, [])
   );
+
+  useEffect (() => {
+    const setReminders = async () => {
+      await requestNotificationPermissions();
+
+      //Schedule reminders at 8 AM, 2 PM, and 8 PM
+      await scheduleReminder(8, 0, '💧 Morning Reminder', 'Start your day with a glass of water!');
+      await scheduleReminder(14, 0, '💧 Afternoon Reminder', 'Time for a hydration check!');
+      await scheduleReminder(20, 0, '💧 Evening Reminder', 'End your day with a glass of water!');
+    };
+
+    setReminders();
+
+  }, []);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
