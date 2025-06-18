@@ -37,3 +37,20 @@ export async function scheduleReminder(hour: number, minute: number, title: stri
   });
 }
 
+//Schedule multiple reminders
+export async function scheduleDailyReminders(times: string[]) {
+    if (Platform.OS === 'web') {
+        console.log('(Web) Skipping notification scheduling');
+        return;
+    }
+
+    //clear previous scheduled reminders
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    for (const time of times) {
+        const [hourStr, minuteStr] = time.split(':');
+        const hour = parseInt(hourStr, 10);
+        const minute = parseInt(minuteStr, 10);
+
+        await scheduleReminder(hour, minute, `💧 Hydration Reminder`, 'Time to drink some water!');
+    }
+}
