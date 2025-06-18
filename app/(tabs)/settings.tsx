@@ -30,6 +30,26 @@ export default function SettingsScreen() {
   const [temperature, setTemperature] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const calculateGoal = () => {
+    const temp = temperature || 70;
+    let additionalWater = 0;
+    if (temp >= 95) additionalWater = 20;
+    else if (temp >= 90) additionalWater = 16;
+    else if (temp >= 85) additionalWater = 12;
+    else if (temp >= 75) additionalWater = 8;
+    else if (temp >= 60) additionalWater = 4;
+
+    const ageNum = parseInt(age, 10);
+    let ageAdjustment = 0;
+    if (!isNaN(ageNum)) {
+      if (ageNum >= 65) ageAdjustment = 12;
+      else if (ageNum <= 18) ageAdjustment = 10;
+    }
+
+    const baseGoal = parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 12 + ageAdjustment;
+    return Math.round(baseGoal + additionalWater);
+  };
+
   useEffect(() => {
     const loadSettings = async () => {
       const { data: { user }, error } = await supabase.auth.getUser();
@@ -100,28 +120,13 @@ export default function SettingsScreen() {
       if (!temp) throw new Error('Weather data unavailable.');
       setTemperature(temp);
 
-      let additionalWater = 0;
-      if (temp >= 95) additionalWater = 20;
-      else if (temp >= 90) additionalWater = 16;
-      else if (temp >= 85) additionalWater = 12;
-      else if (temp >= 75) additionalWater = 8;
-      else if (temp >= 60) additionalWater = 4;
+      const goal = calculateGoal();
+      setDailyGoal(goal);
 
-      const ageNum = parseInt(age, 10);
-      let ageAdjustment = 0;
-      if (!isNaN(ageNum)) {
-        if (ageNum >= 65) ageAdjustment = 12;
-        else if (ageNum <= 18) ageAdjustment = 10;
-      }
+      await AsyncStorage.setItem('dailyGoal', goal.toString());
+      updateSettings({ dailyGoal: goal, weight: parseInt(weight), exerciseHours: parseFloat(exerciseHours) });
 
-      const baseGoal = parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 12 + ageAdjustment;
-      const adjustedGoal = Math.round(baseGoal + additionalWater);
-      setDailyGoal(adjustedGoal);
-
-      await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
-      updateSettings({ dailyGoal: adjustedGoal, weight: parseInt(weight), exerciseHours: parseFloat(exerciseHours) });
-
-      Alert.alert('Hydration Goal Updated!', `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}°F)`);
+      Alert.alert('Hydration Goal Updated!', `Today's hydration goal: ${goal} oz (Temp: ${temp}°F)`);
     } catch (err: any) {
       console.error('Error:', err.message);
       Alert.alert('Error', err.message);
@@ -131,59 +136,35 @@ export default function SettingsScreen() {
   };
 
   const handleSave = async () => {
-  try {
-    Keyboard.dismiss();
+    try {
+      Keyboard.dismiss();
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (userError || !user) throw new Error('User not authenticated');
+      if (userError || !user) throw new Error('User not authenticated');
 
-    // Recalculate daily goal based on current inputs
-    const ageNum = parseInt(age, 10);
-    let ageAdjustment = 0;
-    if (!isNaN(ageNum)) {
-      if (ageNum >= 65) ageAdjustment = 12;
-      else if (ageNum <= 18) ageAdjustment = 10;
+      const goal = calculateGoal();
+      setDailyGoal(goal);
+
+      const { error } = await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        weight: parseInt(weight, 10),
+        age: parseInt(age, 10),
+        exercise_hours: parseFloat(exerciseHours),
+        daily_goal: goal,
+      });
+
+      if (error) throw new Error(error.message);
+
+      Alert.alert('Preferences Saved', 'Your hydration settings were saved successfully.');
+    } catch (err: any) {
+      console.error('Save error:', err.message);
+      Alert.alert('Error', err.message);
     }
-
-    const baseGoal =
-      parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 12 + ageAdjustment;
-    const adjustedGoal = Math.round(baseGoal);
-
-    setDailyGoal(adjustedGoal);
-    await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
-
-    updateSettings({
-      dailyGoal: adjustedGoal,
-      weight: parseInt(weight, 10),
-      exerciseHours: parseFloat(exerciseHours),
-    });
-
-    const { error } = await supabase
-      .from('user_settings')
-      .upsert(
-        {
-          user_id: user.id,
-          weight: parseInt(weight, 10),
-          age: parseInt(age, 10),
-          exercise_hours: parseFloat(exerciseHours),
-          daily_goal: adjustedGoal,
-        },
-        { onConflict: ['user_id'] }
-      );
-
-    if (error) throw new Error(error.message);
-
-    Alert.alert('Preferences Saved', `Hydration goal: ${adjustedGoal} oz`);
-  } catch (err: any) {
-    console.error('Save error:', err.message);
-    Alert.alert('Error', err.message);
-  }
-};
-
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -239,6 +220,7 @@ export default function SettingsScreen() {
   );
 }
 
+// styles stay unchanged below
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
