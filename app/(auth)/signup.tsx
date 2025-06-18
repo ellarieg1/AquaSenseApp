@@ -1,7 +1,17 @@
 // 📁 app/(auth)/signup.tsx
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { supabase } from '../../supabase';
 
 export default function SignUpScreen() {
@@ -10,53 +20,116 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
 
   const handleSignUp = async () => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
+    const { error } = await supabase.auth.signUp({ email, password });
     if (error) {
       Alert.alert('Sign Up Error', error.message);
     } else {
       Alert.alert('Success!', 'Account created. Please log in.');
-      router.replace('/login'); // Send them to login after signing up
+      router.replace('/login');
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign Up for AquaSense</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.inner}>
+        <Image
+          source={require('../../assets/images/aquasense-logo.png')}
+          style={styles.logo}
+        />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        onChangeText={setEmail}
-      />
+        <Text style={styles.title}>Create Your AquaSense Account</Text>
+        <Text style={styles.subtitle}>Your personalized hydration journey begins here</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        onChangeText={setPassword}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#aaa"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          onChangeText={setEmail}
+          value={email}
+        />
 
-      <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-        <Text style={styles.buttonText}>Create Account</Text>
-      </TouchableOpacity>
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#aaa"
+          secureTextEntry
+          onChangeText={setPassword}
+          value={password}
+        />
 
-      <TouchableOpacity onPress={() => router.replace('/login')}>
-        <Text style={styles.link}>Already have an account? Log In</Text>
-      </TouchableOpacity>
-    </View>
+        <TouchableOpacity style={styles.button} onPress={handleSignUp}>
+          <Text style={styles.buttonText}>Sign Up</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.replace('/login')}>
+          <Text style={styles.link}>Already have an account? Log in</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 30, justifyContent: 'center', backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, color: '#41b8d5' },
-  input: { borderBottomWidth: 1, marginBottom: 20, padding: 10 },
-  button: { backgroundColor: '#41b8d5', padding: 15, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '600' },
-  link: { color: '#41b8d5', textAlign: 'center', marginTop: 20 },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+  },
+  inner: {
+    paddingHorizontal: 30,
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    resizeMode: 'contain',
+    marginBottom: 25,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#41b8d5',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 30,
+    textAlign: 'center',
+  },
+  input: {
+    width: '100%',
+    backgroundColor: '#F2F2F2',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    fontSize: 16,
+    color: '#000',
+  },
+  button: {
+    width: '100%',
+    backgroundColor: '#41b8d5',
+    paddingVertical: 16,
+    borderRadius: 25,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  link: {
+    color: '#41b8d5',
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });
