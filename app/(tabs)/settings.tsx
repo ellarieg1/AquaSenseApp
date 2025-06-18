@@ -3,6 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -56,6 +57,34 @@ export default function SettingsScreen() {
     return Math.round(baseGoal + additionalWater);
   };
 
+  const scheduleHydrationReminders = async (times: string[]) => {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+
+    for (const timeStr of times) {
+      const [hour, minute] = timeStr.split(':').map((t) => parseInt(t,10));
+
+      const trigger = {
+        hour,
+        minute,
+        repeats: true,
+        type: 'calendar',
+      } as const;
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '💧 Time to hydrate!',
+          body: "Don't forget to drink some water!",
+        },
+        trigger: {
+          hour,
+          minute,
+          repeats: true,
+          type: 'calendar',
+        } as Notifications.CalendarTriggerInput,
+      });
+    }
+  };
+
   useEffect(() => {
     const loadSettings = async () => {
       const { data: { user }, error } = await supabase.auth.getUser();
@@ -89,6 +118,8 @@ export default function SettingsScreen() {
         });
 
         await AsyncStorage.setItem('dailyGoal', data.daily_goal.toString());
+        const savedTimes = await AsyncStorage.getItem('reminderTimes');
+        if (savedTimes) setReminderTimes(JSON.parse(savedTimes));
       }
     };
 
@@ -144,14 +175,18 @@ export default function SettingsScreen() {
   };
 
   const handleAddReminder = (event: DateTimePickerEvent, selectedTime?: Date) => {
-    console.log("Picker fired:", event.type, selectedTime);
-    setShowPicker(false);
+    /*console.log("Picker fired:", event.type, selectedTime);
+    setShowPicker(false);*/
     if (event.type === 'set' && selectedTime) {
       const timeString = selectedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       if (!reminderTimes.includes(timeString)) {
       setReminderTimes((prev) => [...prev, timeString]);
     }
   }
+};
+
+  const handleRemoveReminder = (time: string) => {
+  setReminderTimes((prev) => prev.filter((t) => t !== time));
 };
 
   const handleSave = async () => {
@@ -180,6 +215,7 @@ export default function SettingsScreen() {
 
       await AsyncStorage.setItem('reminedersEnabled', JSON.stringify(remindersEnabled));
       await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
+      if (remindersEnabled) await scheduleHydrationReminders(reminderTimes);
 
       Alert.alert('Preferences Saved', 'Your hydration settings were saved successfully.');
     } catch (err: any) {
