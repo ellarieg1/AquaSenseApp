@@ -2,7 +2,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,88 +18,88 @@ import {
   View,
 } from 'react-native';
 import { useSettings } from '../../context/SettingsContext';
+import { supabase } from '../../supabase';
 
-// Setting screem which allows users to input their weight, exercise hours, and fetch their current location and weather to calculate a hydration goal.
 export default function SettingsScreen() {
-  // state variables
   const { updateSettings } = useSettings();
   const [location, setLocation] = useState('Unknown');
-  const [weight, setWeight] = useState('160');
-  const [exerciseHours, setExerciseHours] = useState('1');
-  const [age, setAge] = useState('25');
+  const [weight, setWeight] = useState('');
+  const [exerciseHours, setExerciseHours] = useState('');
+  const [age, setAge] = useState('');
   const [dailyGoal, setDailyGoal] = useState(0);
   const [temperature, setTemperature] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  //function to get user location and temperature to calculate hydration goal
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        console.error('Auth error or no user:', error);
+        return;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError) {
+        console.error('Fetch settings error:', fetchError.message);
+        return;
+      }
+
+      if (data) {
+        console.log('Fetched settings:', data);
+        setWeight(data.weight?.toString() || '');
+        setAge(data.age?.toString() || '');
+        setExerciseHours(data.exercise_hours?.toString() || '');
+        setDailyGoal(data.daily_goal || 0);
+
+        updateSettings({
+          dailyGoal: data.daily_goal || 0,
+          weight: data.weight,
+          exerciseHours: data.exercise_hours,
+        });
+
+        await AsyncStorage.setItem('dailyGoal', data.daily_goal.toString());
+      }
+    };
+
+    loadSettings();
+  }, []);
+
   const fetchLocationAndWeather = async () => {
     try {
       setLoading(true);
-
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Location permission was denied.');
-      }
+      if (status !== 'granted') throw new Error('Location permission was denied.');
 
-      //attempts to fetch current location coordinates
-      let loc;
-      try {
-        loc = await Location.getCurrentPositionAsync({});
-      } catch (err: any) {
-        console.log('Error fetching current location:', err.message);
-      }
-
-      //fallback locations if location fetch fails -- defaults to New York City
-      let latitude: number, longitude: number;
-      if (loc && loc.coords) {
-        latitude = loc.coords.latitude;
-        longitude = loc.coords.longitude;
-      } else {
-        latitude = 40.7128;
-        longitude = -74.0060;
-        console.log('Using fallback coordinates:', latitude, longitude);
-      }
+      let loc = await Location.getCurrentPositionAsync({});
+      let latitude = loc?.coords?.latitude || 40.7128;
+      let longitude = loc?.coords?.longitude || -74.0060;
 
       let city = 'Unknown City';
       let region = 'Unknown Region';
-      try {
-        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
-        console.log('Reverse geocode result:', reverse);
 
-        if (reverse && reverse.length > 0) {
-          const place = reverse[0];
-          city =
-            place.city ||
-            place.name ||
-            place.subregion ||
-            (latitude === 40.7128 ? 'New York' : 'Unknown City');
-          region =
-            place.region ||
-            place.country ||
-            (latitude === 40.7128 ? 'New York' : 'Unknown Region');
-        }
-      } catch (geoError) {
-        console.log('Error during reverse geocoding:', geoError);
-        if (latitude === 40.7128 && longitude === -74.0060) {
-          city = 'New York';
-          region = 'New York';
-        }
+      const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (reverse?.length > 0) {
+        const place = reverse[0];
+        city = place.city || place.name || place.subregion || 'New York';
+        region = place.region || place.country || 'New York';
       }
 
       setLocation(`${city}, ${region}`);
 
-      //construct weather API URL and fetch current temperature
       const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
       const weatherUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
       const weatherResp = await fetch(weatherUrl);
       const weatherData = await weatherResp.json();
-      if (!weatherData.current?.temp) {
-        throw new Error('Weather data is unavailable.');
-      }
-      const temp = weatherData.current.temp;
-      setTemperature(temp); //saves current temperature
+      const temp = weatherData.current?.temp;
 
-      //adds additional water based on temperature
+      if (!temp) throw new Error('Weather data unavailable.');
+      setTemperature(temp);
+
       let additionalWater = 0;
       if (temp >= 95) additionalWater = 20;
       else if (temp >= 90) additionalWater = 16;
@@ -109,38 +109,19 @@ export default function SettingsScreen() {
 
       const ageNum = parseInt(age, 10);
       let ageAdjustment = 0;
-
-      //apply age adjustment if age is provided
-      if (!isNaN(ageNum)) { //check if age is a valid number and returns true if number
-        if (ageNum >= 65) {
-          ageAdjustment = 12; //older adults need less whater
-        }
-      else if (ageNum <= 18) {
-        ageAdjustment = 10;  //younger needs more water
-        }
+      if (!isNaN(ageNum)) {
+        if (ageNum >= 65) ageAdjustment = 12;
+        else if (ageNum <= 18) ageAdjustment = 10;
       }
 
-      //FORMULA: calculates hydration goal by taking half of user's weight in oz + 12oz per hour of exercise
-      const baseGoal =
-        parseInt(weight, 10) / 2 + parseInt(exerciseHours, 10) * 12 + ageAdjustment;
-      const adjustedGoal = Math.round(baseGoal + additionalWater); //final daily goal
+      const baseGoal = parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 12 + ageAdjustment;
+      const adjustedGoal = Math.round(baseGoal + additionalWater);
       setDailyGoal(adjustedGoal);
 
-      //allows hydration goal to carry over to other screens
       await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
-     
-      //update context
-      updateSettings({
-        dailyGoal: adjustedGoal,
-        weight: parseInt(weight, 10),
-        exerciseHours: parseInt(exerciseHours, 10),
-      });
+      updateSettings({ dailyGoal: adjustedGoal, weight: parseInt(weight), exerciseHours: parseFloat(exerciseHours) });
 
-      //alert notification for new goal
-      Alert.alert(
-        'Hydration Goal Updated!',
-        `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}\u00b0F)`
-      );
+      Alert.alert('Hydration Goal Updated!', `Today's hydration goal: ${adjustedGoal} oz (Temp: ${temp}°F)`);
     } catch (err: any) {
       console.error('Error:', err.message);
       Alert.alert('Error', err.message);
@@ -149,22 +130,65 @@ export default function SettingsScreen() {
     }
   };
 
-  //called when user clicks save button
-  const handleSave = () => {
+  const handleSave = async () => {
+  try {
     Keyboard.dismiss();
-    Alert.alert('Preferences Saved', 'Your settings have been updated.');
-  };
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) throw new Error('User not authenticated');
+
+    // Recalculate daily goal based on current inputs
+    const ageNum = parseInt(age, 10);
+    let ageAdjustment = 0;
+    if (!isNaN(ageNum)) {
+      if (ageNum >= 65) ageAdjustment = 12;
+      else if (ageNum <= 18) ageAdjustment = 10;
+    }
+
+    const baseGoal =
+      parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 12 + ageAdjustment;
+    const adjustedGoal = Math.round(baseGoal);
+
+    setDailyGoal(adjustedGoal);
+    await AsyncStorage.setItem('dailyGoal', adjustedGoal.toString());
+
+    updateSettings({
+      dailyGoal: adjustedGoal,
+      weight: parseInt(weight, 10),
+      exerciseHours: parseFloat(exerciseHours),
+    });
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert(
+        {
+          user_id: user.id,
+          weight: parseInt(weight, 10),
+          age: parseInt(age, 10),
+          exercise_hours: parseFloat(exerciseHours),
+          daily_goal: adjustedGoal,
+        },
+        { onConflict: ['user_id'] }
+      );
+
+    if (error) throw new Error(error.message);
+
+    Alert.alert('Preferences Saved', `Hydration goal: ${adjustedGoal} oz`);
+  } catch (err: any) {
+    console.error('Save error:', err.message);
+    Alert.alert('Error', err.message);
+  }
+};
+
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-        >
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <Text style={styles.header}>Settings</Text>
           <Text style={styles.tagline}>Personalize your hydration goals</Text>
 
@@ -174,11 +198,7 @@ export default function SettingsScreen() {
           </View>
 
           <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>
-            )}
+            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>}
           </TouchableOpacity>
 
           {temperature !== null && (
@@ -190,35 +210,17 @@ export default function SettingsScreen() {
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Weight (lbs)</Text>
-            <TextInput
-              style={styles.input}
-              value={weight}
-              onChangeText={setWeight}
-              keyboardType="numeric"
-              placeholder="e.g. 160"
-            />
+            <TextInput style={styles.input} value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder="e.g. 160" />
           </View>
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Exercise Hours per Day</Text>
-            <TextInput
-              style={styles.input}
-              value={exerciseHours}
-              onChangeText={setExerciseHours}
-              keyboardType="numeric"
-              placeholder="e.g. 1"
-            />
+            <TextInput style={styles.input} value={exerciseHours} onChangeText={setExerciseHours} keyboardType="numeric" placeholder="e.g. 1" />
           </View>
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Age (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={age}
-              onChangeText={setAge}
-              keyboardType="numeric"
-              placeholder="e.g. 25"
-            />
+            <TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" placeholder="e.g. 25" />
           </View>
 
           {dailyGoal > 0 && (
@@ -237,7 +239,6 @@ export default function SettingsScreen() {
   );
 }
 
-//styles for Settings Screen
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
