@@ -1,6 +1,7 @@
 // 📁 /tabs/settings.tsx
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import React, { useEffect, useState } from 'react';
 import {
@@ -11,17 +12,22 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View,
+  View
 } from 'react-native';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 
+//Settings screen which allows users to input their weight, exercise hours, age, and fetch their location and weather to calculate a personalized hydration goal.
 export default function SettingsScreen() {
   const { updateSettings } = useSettings();
+  const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [reminderTimes, setReminderTimes] = useState<string[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
   const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('');
   const [exerciseHours, setExerciseHours] = useState('');
@@ -124,6 +130,8 @@ export default function SettingsScreen() {
       setDailyGoal(goal);
 
       await AsyncStorage.setItem('dailyGoal', goal.toString());
+      await AsyncStorage.setItem('remindersEnabled', JSON.stringify(remindersEnabled));
+      await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
       updateSettings({ dailyGoal: goal, weight: parseInt(weight), exerciseHours: parseFloat(exerciseHours) });
 
       Alert.alert('Hydration Goal Updated!', `Today's hydration goal: ${goal} oz (Temp: ${temp}°F)`);
@@ -134,6 +142,17 @@ export default function SettingsScreen() {
       setLoading(false);
     }
   };
+
+  const handleAddReminder = (event: DateTimePickerEvent, selectedTime?: Date) => {
+    console.log("Picker fired:", event.type, selectedTime);
+    setShowPicker(false);
+    if (event.type === 'set' && selectedTime) {
+      const timeString = selectedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (!reminderTimes.includes(timeString)) {
+      setReminderTimes((prev) => [...prev, timeString]);
+    }
+  }
+};
 
   const handleSave = async () => {
     try {
@@ -158,6 +177,9 @@ export default function SettingsScreen() {
       });
 
       if (error) throw new Error(error.message);
+
+      await AsyncStorage.setItem('reminedersEnabled', JSON.stringify(remindersEnabled));
+      await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
 
       Alert.alert('Preferences Saved', 'Your hydration settings were saved successfully.');
     } catch (err: any) {
@@ -203,6 +225,31 @@ export default function SettingsScreen() {
             <Text style={styles.label}>Age (optional)</Text>
             <TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" placeholder="e.g. 25" />
           </View>
+
+<View style={styles.infoBlock}>
+            <Text style={styles.label}>Hydration Reminders</Text>
+            <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} />
+          </View>
+
+          {remindersEnabled && (
+            <>
+              <TouchableOpacity style={styles.fetchButton} onPress={() => setShowPicker(true)}>
+                <Text style={styles.fetchButtonText}>Add Reminder Time</Text>
+              </TouchableOpacity>
+              {reminderTimes.map((time, idx) => (
+                <Text key={idx} style={{ textAlign: 'center', marginVertical: 4 }}>{time}</Text>
+              ))}
+              {showPicker && (
+                <DateTimePicker
+                  mode="time"
+                  value={new Date()}
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'clock'}
+                  onChange={handleAddReminder}
+                />
+              )}
+            </>
+          )}
 
           {dailyGoal > 0 && (
             <View style={styles.goalBlock}>

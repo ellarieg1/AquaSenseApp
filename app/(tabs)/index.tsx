@@ -33,9 +33,9 @@ export default function HomeScreen() {
       await requestNotificationPermissions();
 
       //Schedule reminders at 8 AM, 2 PM, and 8 PM
-      await scheduleReminder(8, 0, '💧 Morning Reminder', 'Start your day with a glass of water!');
+      await scheduleReminder(8, 0, '💧 Morning Reminder', 'Fuel your morning -- take your first sip!');
       await scheduleReminder(14, 0, '💧 Afternoon Reminder', 'Time for a hydration check!');
-      await scheduleReminder(20, 0, '💧 Evening Reminder', 'End your day with a glass of water!');
+      await scheduleReminder(20, 0, '💧 Evening Reminder', 'End your day strong. One last hydration boost!');
     };
 
     setReminders();
