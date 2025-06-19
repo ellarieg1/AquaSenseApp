@@ -273,7 +273,16 @@ export default function SettingsScreen() {
                 <Text style={styles.fetchButtonText}>Add Reminder Time</Text>
               </TouchableOpacity>
               {reminderTimes.map((time, idx) => (
-                <Text key={idx} style={{ textAlign: 'center', marginVertical: 4 }}>{time}</Text>
+                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginVertical: 4 }}>
+                  <Text style={{ fontSize: 16, marginRight: 10 }}>{time}</Text>
+                  <TouchableOpacity
+                  // allows users to remove a reminder time
+                    onPress={() => handleRemoveReminder(time)}
+                    style={{ backgroundColor: '#ff5c5c', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>Remove</Text>
+                  </TouchableOpacity>
+                  </View>
               ))}
               {showPicker && (
                 <DateTimePicker
