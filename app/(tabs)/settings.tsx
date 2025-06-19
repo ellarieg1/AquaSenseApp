@@ -126,6 +126,22 @@ export default function SettingsScreen() {
     loadSettings();
   }, []);
 
+  // Request notification permissions
+  useEffect(() => {
+    const checkNotificationPermissions = async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+
+      if (status !== 'granted') {
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+       
+        if (newStatus !== 'granted') {
+          Alert.alert('Notification permissions required', 'Please enable notifications to receive hydration reminders.');
+        }
+      }
+    };
+    checkNotificationPermissions();
+}, []);
+
   const fetchLocationAndWeather = async () => {
     try {
       setLoading(true);
