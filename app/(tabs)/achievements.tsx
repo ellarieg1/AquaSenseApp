@@ -50,12 +50,10 @@ export default function Achievements() {
           <View key={badge.id} style={styles.badgeWrapper}>
             <Image
               source={badge.image}
-              style={[
-                styles.badgeImage,
-                !badge.earned && styles.grayedOut,
-              ]}
+              style={[styles.badgeImage, !badge.earned && styles.grayedOut]}
             />
             <Text style={styles.badgeTitle}>{badge.title}</Text>
+            <Text style={styles.badgeDesc}>{badge.description}</Text>
           </View>
         ))}
       </View>
@@ -65,46 +63,67 @@ export default function Achievements() {
 
 const styles = StyleSheet.create({
   container: {
+    flexGrow: 1,
     paddingTop: 40,
-    paddingBottom: 80,
+    paddingBottom: 100,
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#F2FAFC',
+    paddingHorizontal: 20,
   },
   header: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#41b8d5',
-    marginBottom: 10,
+    fontSize: 30,
+    fontWeight: '600',
+    color: '#1B4965',
+    textAlign: 'center',
+    marginBottom: 6,
   },
   sub: {
     fontSize: 16,
-    marginBottom: 20,
+    color: '#4A4A4A',
     textAlign: 'center',
-    width: '90%',
-    color: '#555',
+    marginBottom: 30,
+    fontStyle: 'italic',
+    paddingHorizontal: 10,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
+    gap: 16,
   },
   badgeWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
     alignItems: 'center',
-    margin: 20, // Increased spacing between badges
+    width: 210,
+    margin: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   badgeImage: {
-    width: 160, // Significantly larger size
-    height: 160,
+    width: 190,
+    height: 190,
     resizeMode: 'contain',
+    marginBottom: 12,
   },
   grayedOut: {
-    opacity: 0.2, // Even more obvious gray-out
+    opacity: 0.2,
   },
   badgeTitle: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#555555',
     textAlign: 'center',
-    marginTop: 10,
-    fontWeight: '600',
+  },
+  badgeDesc: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
+    marginTop: 6,
+    paddingHorizontal: 8,
   },
 });

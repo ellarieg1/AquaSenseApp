@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   header: {
   fontSize: 28,
   fontWeight: '600', // softer than bold
-  color: '#679aad', // your medium blue
+  color: '#1B4965', // your medium blue
   textAlign: 'center',
   marginBottom: 6,
   letterSpacing: 0.5,
