@@ -1,16 +1,54 @@
-import React from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { Circle } from 'react-native-progress';
 import { useSettings } from '../../context/SettingsContext';
+import { supabase } from '../../supabase';
+
 
 export default function ProgressScreen() {
+  const { settings } = useSettings(); // ⬅️ move this to the top
   const screenWidth = Dimensions.get('window').width;
-  const { settings } = useSettings();
+  const [dailyGoal, setDailyGoal] = useState<number | null>(null);
+
+useFocusEffect(
+  useCallback(() => {
+    const fetchGoal = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) return;
+
+      const { data, error: fetchError } = await supabase
+        .from('user_settings')
+        .select('daily_goal')
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError) {
+        console.error('Progress goal fetch error:', fetchError.message);
+        return;
+      }
+
+      if (data?.daily_goal) {
+        setDailyGoal(data.daily_goal);
+      }
+    };
+
+    fetchGoal();
+  }, [])
+);
+ 
 
   const currentIntake = 24; // Replace with actual tracked value
-  const dailyGoal = settings.dailyGoal || (settings.weight / 2 + settings.exerciseHours * 12);
+ const goal =
+  dailyGoal ??
+  settings.dailyGoal ??
+  Math.round(settings.weight / 2 + settings.exerciseHours * 12);
   const progressPercent = Math.min(currentIntake / dailyGoal, 1);
+  <Text style={styles.todayText}>
+  {currentIntake} oz of {Math.round(goal)} oz goal
+</Text>
+
 
   const chartConfig = {
     backgroundGradientFrom: '#f5f5f5',

@@ -1,7 +1,5 @@
-// 📁 /tabs/settings.tsx
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useEffect, useState } from 'react';
@@ -20,12 +18,12 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 
-//Settings screen which allows users to input their weight, exercise hours, age, and fetch their location and weather to calculate a personalized hydration goal.
 export default function SettingsScreen() {
-  const { updateSettings } = useSettings();
+  const { updateSettings, setTemperature, temperature } = useSettings();
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [reminderTimes, setReminderTimes] = useState<string[]>([]);
   const [showPicker, setShowPicker] = useState(false);
@@ -34,7 +32,6 @@ export default function SettingsScreen() {
   const [exerciseHours, setExerciseHours] = useState('');
   const [age, setAge] = useState('');
   const [dailyGoal, setDailyGoal] = useState(0);
-  const [temperature, setTemperature] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const calculateGoal = () => {
@@ -62,7 +59,6 @@ export default function SettingsScreen() {
 
     for (const timeStr of times) {
       const [hour, minute] = timeStr.split(':').map((t) => parseInt(t,10));
-
       const trigger = {
         hour,
         minute,
@@ -75,12 +71,7 @@ export default function SettingsScreen() {
           title: '💧 Time to hydrate!',
           body: "Don't forget to drink some water!",
         },
-        trigger: {
-          hour,
-          minute,
-          repeats: true,
-          type: 'calendar',
-        } as Notifications.CalendarTriggerInput,
+        trigger,
       });
     }
   };
@@ -126,21 +117,18 @@ export default function SettingsScreen() {
     loadSettings();
   }, []);
 
-  // Request notification permissions
   useEffect(() => {
     const checkNotificationPermissions = async () => {
       const { status } = await Notifications.getPermissionsAsync();
-
       if (status !== 'granted') {
         const { status: newStatus } = await Notifications.requestPermissionsAsync();
-       
         if (newStatus !== 'granted') {
           Alert.alert('Notification permissions required', 'Please enable notifications to receive hydration reminders.');
         }
       }
     };
     checkNotificationPermissions();
-}, []);
+  }, []);
 
   const fetchLocationAndWeather = async () => {
     try {
@@ -171,7 +159,7 @@ export default function SettingsScreen() {
       const temp = weatherData.current?.temp;
 
       if (!temp) throw new Error('Weather data unavailable.');
-      setTemperature(temp);
+      setTemperature(temp); // Update via context
 
       const goal = calculateGoal();
       setDailyGoal(goal);
@@ -180,6 +168,19 @@ export default function SettingsScreen() {
       await AsyncStorage.setItem('remindersEnabled', JSON.stringify(remindersEnabled));
       await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
       updateSettings({ dailyGoal: goal, weight: parseInt(weight), exerciseHours: parseFloat(exerciseHours) });
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+if (!userError && user) {
+  const { error: upsertError } = await supabase.from('user_settings').upsert({
+    user_id: user.id,
+    weight: parseInt(weight, 10),
+    age: parseInt(age, 10),
+    exercise_hours: parseFloat(exerciseHours),
+    daily_goal: goal,
+  });
+  if (upsertError) {
+    console.error('Error writing goal to Supabase:', upsertError.message);
+  }
+}
 
       Alert.alert('Hydration Goal Updated!', `Today's hydration goal: ${goal} oz (Temp: ${temp}°F)`);
     } catch (err: any) {
@@ -191,29 +192,22 @@ export default function SettingsScreen() {
   };
 
   const handleAddReminder = (event: DateTimePickerEvent, selectedTime?: Date) => {
-    /*console.log("Picker fired:", event.type, selectedTime);
-    setShowPicker(false);*/
     if (event.type === 'set' && selectedTime) {
       const timeString = selectedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       if (!reminderTimes.includes(timeString)) {
-      setReminderTimes((prev) => [...prev, timeString]);
+        setReminderTimes((prev) => [...prev, timeString]);
+      }
     }
-  }
-};
+  };
 
   const handleRemoveReminder = (time: string) => {
-  setReminderTimes((prev) => prev.filter((t) => t !== time));
-};
+    setReminderTimes((prev) => prev.filter((t) => t !== time));
+  };
 
   const handleSave = async () => {
     try {
       Keyboard.dismiss();
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
       const goal = calculateGoal();
@@ -225,11 +219,12 @@ export default function SettingsScreen() {
         age: parseInt(age, 10),
         exercise_hours: parseFloat(exerciseHours),
         daily_goal: goal,
-      });
-
+    },
+    { onConflict: 'user_id' } // 👈 this resolves the duplicate key error
+  );
       if (error) throw new Error(error.message);
 
-      await AsyncStorage.setItem('reminedersEnabled', JSON.stringify(remindersEnabled));
+      await AsyncStorage.setItem('remindersEnabled', JSON.stringify(remindersEnabled));
       await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
       if (remindersEnabled) await scheduleHydrationReminders(reminderTimes);
 
@@ -240,10 +235,19 @@ export default function SettingsScreen() {
     }
   };
 
-  return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+
+return (
+  <SafeAreaView style={{ flex: 1, backgroundColor: '#F2FAFC' }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.container, { paddingBottom: 80 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.header}>Settings</Text>
           <Text style={styles.tagline}>Personalize your hydration goals</Text>
 
@@ -253,7 +257,11 @@ export default function SettingsScreen() {
           </View>
 
           <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>}
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>
+            )}
           </TouchableOpacity>
 
           {temperature !== null && (
@@ -265,52 +273,46 @@ export default function SettingsScreen() {
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Weight (lbs)</Text>
-            <TextInput style={styles.input} value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder="e.g. 160" />
+            <TextInput
+              style={styles.input}
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="numeric"
+              placeholder="e.g. 160"
+            />
           </View>
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Exercise Hours per Day</Text>
-            <TextInput style={styles.input} value={exerciseHours} onChangeText={setExerciseHours} keyboardType="numeric" placeholder="e.g. 1" />
+            <TextInput
+              style={styles.input}
+              value={exerciseHours}
+              onChangeText={setExerciseHours}
+              keyboardType="numeric"
+              placeholder="e.g. 1"
+            />
           </View>
 
           <View style={styles.infoBlock}>
             <Text style={styles.label}>Age (optional)</Text>
-            <TextInput style={styles.input} value={age} onChangeText={setAge} keyboardType="numeric" placeholder="e.g. 25" />
+            <TextInput
+              style={styles.input}
+              value={age}
+              onChangeText={setAge}
+              keyboardType="numeric"
+              placeholder="e.g. 25"
+            />
           </View>
 
-<View style={styles.infoBlock}>
-            <Text style={styles.label}>Hydration Reminders</Text>
-            <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} />
+          <View style={styles.reminderCard}>
+            <View style={styles.reminderHeader}>
+              <Text style={styles.reminderLabel}>Hydration Reminders</Text>
+              <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} />
+            </View>
+            <Text style={styles.reminderNote}>
+              You'll receive hydration reminders at 8 AM, 2 PM, and 8 PM if enabled.
+            </Text>
           </View>
-
-          {remindersEnabled && (
-            <>
-              <TouchableOpacity style={styles.fetchButton} onPress={() => setShowPicker(true)}>
-                <Text style={styles.fetchButtonText}>Add Reminder Time</Text>
-              </TouchableOpacity>
-              {reminderTimes.map((time, idx) => (
-                <View key={idx} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginVertical: 4 }}>
-                  <Text style={{ fontSize: 16, marginRight: 10 }}>{time}</Text>
-                  <TouchableOpacity
-                  // allows users to remove a reminder time
-                    onPress={() => handleRemoveReminder(time)}
-                    style={{ backgroundColor: '#ff5c5c', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 }}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>Remove</Text>
-                  </TouchableOpacity>
-                  </View>
-              ))}
-              {showPicker && (
-                <DateTimePicker
-                  mode="time"
-                  value={new Date()}
-                  is24Hour={false}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'clock'}
-                  onChange={handleAddReminder}
-                />
-              )}
-            </>
-          )}
 
           {dailyGoal > 0 && (
             <View style={styles.goalBlock}>
@@ -325,38 +327,45 @@ export default function SettingsScreen() {
         </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
-  );
+  </SafeAreaView>
+);
 }
 
-// styles stay unchanged below
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F2FAFC',
     paddingHorizontal: 20,
     paddingTop: 40,
   },
   header: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#41b8d5',
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#1B4965',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   tagline: {
     fontSize: 16,
-    color: '#555',
+    color: '#4A4A4A',
     textAlign: 'center',
     marginBottom: 25,
+    fontStyle: 'italic',
   },
   infoBlock: {
     marginBottom: 20,
-    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#555',
+    color: '#333',
     marginBottom: 6,
   },
   locationText: {
@@ -371,11 +380,12 @@ const styles = StyleSheet.create({
   },
   fetchButton: {
     backgroundColor: '#41b8d5',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 25,
     alignItems: 'center',
     marginBottom: 20,
+    elevation: 2,
   },
   fetchButtonText: {
     color: '#FFFFFF',
@@ -396,13 +406,14 @@ const styles = StyleSheet.create({
   goalBlock: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 20,
-    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 10,
+    borderRadius: 20,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 3,
-    marginVertical: 20,
+    marginVertical: 25,
   },
   goalLabel: {
     fontSize: 18,
@@ -411,20 +422,47 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   goalValue: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#41b8d5',
   },
   saveButton: {
-    backgroundColor: '#41b8d5',
-    paddingVertical: 15,
+    backgroundColor: '#1B4965',
+    paddingVertical: 16,
     borderRadius: 25,
     alignItems: 'center',
     marginTop: 10,
+    marginBottom: 40,
+    elevation: 3,
   },
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  reminderCard: {
+    backgroundColor: '#fff',
+    padding: 18,
+    borderRadius: 16,
+    marginBottom: 25,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reminderLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1B4965',
+  },
+  reminderNote: {
+    fontSize: 14,
+    color: '#444',
   },
 });

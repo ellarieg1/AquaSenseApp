@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useContext, useState } from 'react';
 
-type ClimateType = 'moderate' | 'hot'; //climate types
+type ClimateType = 'moderate' | 'hot';
 
 type SettingsType = {
   weight: number;
@@ -12,10 +12,11 @@ type SettingsType = {
 
 type SettingsContextType = {
   settings: SettingsType;
+  temperature: number | null;
+  setTemperature: (temp: number) => void;
   updateSettings: (newSettings: Partial<SettingsType>) => void;
 };
 
-//sets default values for settings
 const defaultSettings: SettingsType = {
   weight: 150,
   exerciseHours: 0,
@@ -28,13 +29,14 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useState<SettingsType>(defaultSettings);
+  const [temperature, setTemperature] = useState<number | null>(null);
 
   const updateSettings = (newSettings: Partial<SettingsType>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
   };
 
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings }}>
+    <SettingsContext.Provider value={{ settings, temperature, setTemperature, updateSettings }}>
       {children}
     </SettingsContext.Provider>
   );
