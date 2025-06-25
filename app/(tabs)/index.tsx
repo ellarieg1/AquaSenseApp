@@ -67,11 +67,9 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Image
-          source={require('../../assets/images/aquasense-logo.png')}
+          source={require('../../assets/images/homescreenlogo.png')}
           style={styles.logo}
         />
-
-        <Text style={styles.tagline}>Sip. Sync. Thrive.</Text>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Today's Goal</Text>
@@ -111,7 +109,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f0faff',
+    backgroundColor: '#F2FAFC',
   },
   container: {
     alignItems: 'center',
@@ -121,19 +119,12 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   logo: {
-    width: 120,
-    height: 120,
+    width: 180,
+    height: 180,
     resizeMode: 'contain',
     marginBottom: 0,
   },
-  tagline: {
-    fontFamily: 'System',
-    fontSize: 16,
-    color: '#555555',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
+  
   card: {
     width: '100%',
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
