@@ -50,7 +50,7 @@ export default function SettingsScreen() {
       else if (ageNum <= 18) ageAdjustment = 10;
     }
 
-    const baseGoal = parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 12 + ageAdjustment;
+    const baseGoal = parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 10 + ageAdjustment;
     return Math.round(baseGoal + additionalWater);
   };
 
