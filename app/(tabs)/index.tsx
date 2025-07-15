@@ -1,11 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Image, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Circle } from 'react-native-progress';
+import { connectToDeviceAndSync } from '../../bluetooth/BluetoothManager';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 import { requestNotificationPermissions, scheduleReminder } from '../../utils/notificationUtils';
+
+
 
 
 export default function HomeScreen() {
@@ -90,6 +93,31 @@ export default function HomeScreen() {
           />
           <Text style={styles.intakeText}>{currentIntake} oz logged today</Text>
         </View>
+
+        <TouchableOpacity
+  style={{
+    backgroundColor: '#41b8d5',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 20,
+    alignItems: 'center',
+  }}
+  onPress={async () => {
+  try {
+    await connectToDeviceAndSync(); // this just connects + alerts if successful
+  } catch (err) {
+    Alert.alert('Error', 'Something went wrong while trying to connect.');
+    console.error('BLE Connect Error:', err);
+  }
+}}
+
+>
+  <Text style={{ color: '#fff', fontWeight: 'bold' }}>
+    Sync from Bottle
+  </Text>
+</TouchableOpacity>
+
+
 
         {isHot && (
           <View style={styles.alertCard}>
