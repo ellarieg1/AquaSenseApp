@@ -1,98 +1,121 @@
-// Import required libraries
+// bluetooth/BluetoothManager.ts
+// Minimal BLE helper for AquaSense ESP32 with debug pop-up tracing.
+
+import { decode as base64Decode } from 'base-64';
 import { Alert } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 
-// Create a new instance of the BLE manager
+// -------- DEBUG --------
+const DEBUG_ALERTS = true; // set false when done debugging
+function dbg(msg: string) {
+  console.log(msg);
+  if (!DEBUG_ALERTS) return;
+  setTimeout(() => Alert.alert('BLE Debug', msg), 0);
+}
+// -----------------------
+
+// ==== ESP32 values from your sketch ====
+const TARGET_DEVICE_NAME = 'AquaSense';
+const SERVICE_UUID = '12345678-1234-1234-1234-1234567890ab';
+const CHARACTERISTIC_UUID = 'abcd1234-5678-90ab-cdef-1234567890ab';
+
+// Single shared manager
 const bleManager = new BleManager();
 
-// Constants for your specific device and BLE UUIDs
-const TARGET_DEVICE_NAME = 'Arduino'; // This is what your ESP32 advertises as its name
-const SERVICE_UUID = '12345678-1234-1234-1234-1234567890ab'; // Your custom service UUID from ESP32
-const CHARACTERISTIC_UUID = 'abcd1234-5678-90ab-cdef-1234567890ab'; // Custom characteristic for water volume
+// Pull numeric mL value out of the ESP32 payload string.
+// Examples: " Volume: 142.3 mL", "Waiting...", " Volume: 0.0 mL"
+function extractMl(text: string): number | null {
+  const t = text.trim();
+  if (!t || /^waiting/i.test(t)) return null;
 
-export async function connectToDeviceAndSync(): Promise<void> {
-  return new Promise((resolve) => {
+  // Look specifically for a number before "mL"; fallback to any number.
+  const mlMatch = t.match(/([-+]?\d*\.?\d+)\s*mL/i) || t.match(/([-+]?\d*\.?\d+)/);
+  if (!mlMatch) return null;
+
+  const mlVal = parseFloat(mlMatch[1]);
+  if (isNaN(mlVal)) return null;
+  return Math.round(mlVal); // round to whole mL
+}
+
+/**
+ * Scan -> connect -> read UTF-8 volume string -> parse mL.
+ * Resolves mL number or null if no numeric data.
+ * Rejects on error so caller can catch.
+ */
+export function connectToDeviceAndSync(): Promise<number | null> {
+  return new Promise((resolve, reject) => {
     console.log('🔍 Starting BLE scan...');
+    dbg('scan start');
 
-    // Start scanning for BLE devices that advertise the custom SERVICE_UUID
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     const subscription = bleManager.startDeviceScan(
-      [SERVICE_UUID],
+      // Null = scan all (more reliable for ESP32 than filtering on service UUID)
+      null,
       null,
       async (error, device) => {
-        // If there's an error in the scan (e.g., Bluetooth turned off), show alert and stop
         if (error) {
           console.error('❌ Scan error:', error.message);
-          Alert.alert('Scan Error', error.message);
+          dbg('scan error: ' + error.message);
           subscription.remove();
-          resolve();
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(error);
           return;
         }
 
-        // Log each discovered device (helpful for debugging)
-        console.log(`📡 Found device: ${device.name} (${device.id})`);
+        if (device?.name) {
+          console.log(`📡 Found: ${device.name} (${device.id})`);
+          if (device.name === TARGET_DEVICE_NAME) dbg('found AquaSense');
+        }
 
-        // If the device's name includes "Arduino", proceed
-        if (device.name?.includes(TARGET_DEVICE_NAME)) {
-          console.log('✅ Target device found. Attempting to connect...');
-          subscription.remove(); // Stop scanning
+        if (device?.name === TARGET_DEVICE_NAME) {
+          console.log('✅ AquaSense found. Connecting...');
+          dbg('connecting...');
+          subscription.remove();
+          if (timeoutId) clearTimeout(timeoutId);
 
           try {
-            // Connect to the device
-            const connectedDevice = await device.connect();
-            console.log('🔗 Connected to device. Discovering services...');
+            const connected = await device.connect();
+            console.log('🔗 Connected. Discovering services...');
+            dbg('connected, discovering...');
+            await connected.discoverAllServicesAndCharacteristics();
 
-            // Discover all services and characteristics exposed by the device
-            await connectedDevice.discoverAllServicesAndCharacteristics();
-
-            // Get list of services
-            const services = await connectedDevice.services();
-
-            // Find the custom service you're interested in
-            const service = services.find(s =>
-              s.uuid.toLowerCase().includes(SERVICE_UUID.toLowerCase())
+            // Direct read
+            dbg('reading characteristic...');
+            const char = await connected.readCharacteristicForService(
+              SERVICE_UUID,
+              CHARACTERISTIC_UUID
             );
-            if (!service) throw new Error('Service not found');
 
-            // Get all characteristics for the service
-            const characteristics = await service.characteristics();
+            if (!char?.value) {
+              throw new Error('No data received from characteristic');
+            }
 
-            // Find your specific characteristic that holds the water volume data
-            const characteristic = characteristics.find(c =>
-              c.uuid.toLowerCase().includes(CHARACTERISTIC_UUID.toLowerCase())
-            );
-            if (!characteristic) throw new Error('Characteristic not found');
+            // base64 -> text (UTF-8-ish; BLEStringCharacteristic)
+            const decoded = base64Decode(char.value);
+            console.log('📦 Raw text from ESP32:', JSON.stringify(decoded));
+            dbg('decoded: ' + decoded);
 
-            console.log('📥 Reading value from characteristic...');
+            const ml = extractMl(decoded);
+            console.log('📏 Parsed mL:', ml);
+            dbg('parsed mL: ' + ml);
 
-            // Read the current value of the characteristic
-            const data = await characteristic.read();
-
-            // If no data, throw an error
-            if (!data?.value) throw new Error('No data received from characteristic');
-
-            // Decode the base64-encoded string to UTF-8 text
-            const decoded = Buffer.from(data.value, 'base64').toString('utf-8');
-            console.log('📦 Decoded value:', decoded);
-
-            // Show an alert with the result
-            Alert.alert('Success!', `Received: ${decoded}`);
-            resolve();
+            resolve(ml);
           } catch (err: any) {
-            // Handle errors that occur during connection or read
-            console.error('❌ BLE connection error:', err.message);
-            Alert.alert('Connection Error', err.message || 'Unknown error');
-            resolve();
+            console.error('❌ BLE connect/read error:', err?.message ?? err);
+            dbg('connect/read error');
+            reject(err);
           }
         }
       }
     );
 
-    // After 10 seconds, stop the scan if no device is found and show timeout alert
-    setTimeout(() => {
+    // Safety timeout
+    timeoutId = setTimeout(() => {
       subscription.remove();
-      console.warn('⏰ Scan timeout.');
-      Alert.alert('Timeout', 'Could not find the AquaSense bottle.');
-      resolve();
+      console.warn('⏰ Scan timeout: AquaSense not found.');
+      dbg('scan timeout (no AquaSense)');
+      reject(new Error('Scan timeout: device not found'));
     }, 10000);
   });
 }
