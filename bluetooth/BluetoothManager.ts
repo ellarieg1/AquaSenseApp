@@ -1,121 +1,141 @@
 // bluetooth/BluetoothManager.ts
-// Minimal BLE helper for AquaSense ESP32 with debug pop-up tracing.
+// AquaSense BLE helper: scan once, connect once, read once, disconnect.
+// Returns Promise<number | null>: parsed mL (rounded) or null if no numeric data.
 
 import { decode as base64Decode } from 'base-64';
-import { Alert } from 'react-native';
-import { BleManager } from 'react-native-ble-plx';
+import { BleManager, Device } from 'react-native-ble-plx';
 
-// -------- DEBUG --------
-const DEBUG_ALERTS = true; // set false when done debugging
-function dbg(msg: string) {
-  console.log(msg);
-  if (!DEBUG_ALERTS) return;
-  setTimeout(() => Alert.alert('BLE Debug', msg), 0);
-}
-// -----------------------
-
-// ==== ESP32 values from your sketch ====
+// ==== AquaSense ESP32 UUIDs ====
 const TARGET_DEVICE_NAME = 'AquaSense';
 const SERVICE_UUID = '12345678-1234-1234-1234-1234567890ab';
 const CHARACTERISTIC_UUID = 'abcd1234-5678-90ab-cdef-1234567890ab';
 
-// Single shared manager
-const bleManager = new BleManager();
+// Toggle console debug (no popups)
+const DEBUG = true;
+function log(...args: any[]) {
+  if (DEBUG) console.log('[BLE]', ...args);
+}
 
-// Pull numeric mL value out of the ESP32 payload string.
-// Examples: " Volume: 142.3 mL", "Waiting...", " Volume: 0.0 mL"
+// ONE shared BleManager instance
+const ble = new BleManager();
+
+// Extract numeric mL from payload: " Volume: 142.3 mL", "Waiting...", etc.
 function extractMl(text: string): number | null {
   const t = text.trim();
   if (!t || /^waiting/i.test(t)) return null;
-
-  // Look specifically for a number before "mL"; fallback to any number.
-  const mlMatch = t.match(/([-+]?\d*\.?\d+)\s*mL/i) || t.match(/([-+]?\d*\.?\d+)/);
-  if (!mlMatch) return null;
-
-  const mlVal = parseFloat(mlMatch[1]);
-  if (isNaN(mlVal)) return null;
-  return Math.round(mlVal); // round to whole mL
+  const match = t.match(/([-+]?\d*\.?\d+)\s*mL/i) || t.match(/([-+]?\d*\.?\d+)/);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  return isNaN(n) ? null : Math.round(n);
 }
 
-/**
- * Scan -> connect -> read UTF-8 volume string -> parse mL.
- * Resolves mL number or null if no numeric data.
- * Rejects on error so caller can catch.
- */
+// Prevent overlapping syncs (belt + suspenders)
+let inFlight: Promise<number | null> | null = null;
 export function connectToDeviceAndSync(): Promise<number | null> {
+  if (inFlight) {
+    log('sync already running; returning same promise');
+    return inFlight;
+  }
+  inFlight = syncOnce().finally(() => (inFlight = null));
+  return inFlight;
+}
+
+async function syncOnce(): Promise<number | null> {
+  log('scan start');
+  const device = await scanForDevice();
+  log('found device', device.name, device.id);
+
+  // Some stacks need a fresh connection even if reported connected
+  let connected = device;
+  const already = await connected.isConnected().catch(() => false);
+  if (!already) {
+    log('connecting...');
+    connected = await connected.connect();
+  } else {
+    log('already connected');
+  }
+
+  log('discovering services...');
+  await connected.discoverAllServicesAndCharacteristics();
+
+  // Tiny delay can help some ESP32 BLE libs settle
+  await sleep(300);
+
+  log('reading characteristic...');
+  const char = await connected.readCharacteristicForService(
+    SERVICE_UUID,
+    CHARACTERISTIC_UUID
+  );
+  if (!char?.value) {
+    log('no data from char');
+    await safeDisconnect(connected);
+    throw new Error('No data received from characteristic');
+  }
+
+  const decoded = base64Decode(char.value); // ESP32 sends UTF-8 ASCII
+  log('decoded text:', JSON.stringify(decoded));
+
+  const ml = extractMl(decoded);
+  log('parsed mL:', ml);
+
+  await safeDisconnect(connected);
+  return ml;
+}
+
+function scanForDevice(timeoutMs = 10000): Promise<Device> {
   return new Promise((resolve, reject) => {
-    console.log('🔍 Starting BLE scan...');
-    dbg('scan start');
+    let found = false;
+    let timeout: ReturnType<typeof setTimeout>;
 
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const stop = () => {
+      try {
+        ble.stopDeviceScan();
+      } catch {}
+      clearTimeout(timeout);
+    };
 
-    const subscription = bleManager.startDeviceScan(
-      // Null = scan all (more reliable for ESP32 than filtering on service UUID)
-      null,
-      null,
-      async (error, device) => {
-        if (error) {
-          console.error('❌ Scan error:', error.message);
-          dbg('scan error: ' + error.message);
-          subscription.remove();
-          if (timeoutId) clearTimeout(timeoutId);
-          reject(error);
-          return;
-        }
-
-        if (device?.name) {
-          console.log(`📡 Found: ${device.name} (${device.id})`);
-          if (device.name === TARGET_DEVICE_NAME) dbg('found AquaSense');
-        }
-
-        if (device?.name === TARGET_DEVICE_NAME) {
-          console.log('✅ AquaSense found. Connecting...');
-          dbg('connecting...');
-          subscription.remove();
-          if (timeoutId) clearTimeout(timeoutId);
-
-          try {
-            const connected = await device.connect();
-            console.log('🔗 Connected. Discovering services...');
-            dbg('connected, discovering...');
-            await connected.discoverAllServicesAndCharacteristics();
-
-            // Direct read
-            dbg('reading characteristic...');
-            const char = await connected.readCharacteristicForService(
-              SERVICE_UUID,
-              CHARACTERISTIC_UUID
-            );
-
-            if (!char?.value) {
-              throw new Error('No data received from characteristic');
-            }
-
-            // base64 -> text (UTF-8-ish; BLEStringCharacteristic)
-            const decoded = base64Decode(char.value);
-            console.log('📦 Raw text from ESP32:', JSON.stringify(decoded));
-            dbg('decoded: ' + decoded);
-
-            const ml = extractMl(decoded);
-            console.log('📏 Parsed mL:', ml);
-            dbg('parsed mL: ' + ml);
-
-            resolve(ml);
-          } catch (err: any) {
-            console.error('❌ BLE connect/read error:', err?.message ?? err);
-            dbg('connect/read error');
-            reject(err);
-          }
-        }
+    ble.startDeviceScan(null, null, (error, device) => {
+      if (error) {
+        log('scan error', error.message);
+        stop();
+        reject(error);
+        return;
       }
-    );
+      if (!device?.name) return;
+      // Accept exact OR partial match (in case firmware changes)
+      if (
+        device.name === TARGET_DEVICE_NAME ||
+        device.name.toLowerCase().includes(TARGET_DEVICE_NAME.toLowerCase())
+      ) {
+        if (found) return;
+        found = true;
+        stop();
+        resolve(device);
+      }
+    });
 
-    // Safety timeout
-    timeoutId = setTimeout(() => {
-      subscription.remove();
-      console.warn('⏰ Scan timeout: AquaSense not found.');
-      dbg('scan timeout (no AquaSense)');
-      reject(new Error('Scan timeout: device not found'));
-    }, 10000);
+    timeout = setTimeout(() => {
+      if (!found) {
+        log('scan timeout');
+        stop();
+        reject(new Error('Scan timeout: AquaSense not found'));
+      }
+    }, timeoutMs);
   });
+}
+
+async function safeDisconnect(d: Device) {
+  try {
+    const isConn = await d.isConnected();
+    if (isConn) {
+      log('disconnecting...');
+      await d.cancelConnection();
+    }
+  } catch (e) {
+    log('disconnect error', e);
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise(r => setTimeout(r, ms));
 }
