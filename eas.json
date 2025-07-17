@@ -1,12 +1,62 @@
 {
   "cli": {
-    "version": ">= 3.0.0",
+    // lock EAS CLI ≥ 4.x so cloud builder always has a compatible version
+    "version": ">= 4.0.0",
+    // keeps Expo from prompting for APNs/APNs keys during build
     "promptToConfigurePushNotifications": false
   },
+
   "build": {
+    /* --------------------------------------------------------- *
+     * FAST INTERNAL / TESTFLIGHT BUILD — what you need today
+     * --------------------------------------------------------- */
     "preview": {
+      "distribution": "internal",        // side-load or TestFlight
+      "developmentClient": false,        // standard release-mode binary
+      "ios": {
+        "resourceClass": "m-medium"      // free/Starter plan size
+      },
+      "android": {
+        "gradleCommand": ":app:assembleRelease"
+      }
+    },
+
+    /* --------------------------------------------------------- *
+     * DEV CLIENT for live debugging (optional)
+     * --------------------------------------------------------- */
+    "development": {
       "distribution": "internal",
-      "developmentClient": false
+      "developmentClient": true,         // includes Expo dev-menu
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        // you can toggle runtime flags here if you need them
+        "BLE_VERBOSE_LOG": "1"
+      }
+    },
+
+    /* --------------------------------------------------------- *
+     * APP STORE / PLAY STORE submission build (when you’re ready)
+     * --------------------------------------------------------- */
+    "production": {
+      "distribution": "store",
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "gradleCommand": ":app:bundleRelease"
+      },
+      "env": {
+        "EXPO_PUBLIC_RELEASE_CHANNEL": "latest"
+      }
     }
+  },
+
+  "submit": {
+    "production": {}         
   }
 }
