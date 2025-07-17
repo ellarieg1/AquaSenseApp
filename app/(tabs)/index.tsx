@@ -23,7 +23,7 @@ import {
   View,
 } from 'react-native';
 import { Circle } from 'react-native-progress';
-import { connectToDeviceAndSync } from '../../bluetooth/BluetoothManager';
+import { connectToDeviceAndSync, readBatteryPercent } from '../../bluetooth/BluetoothManager';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 import {
@@ -317,6 +317,21 @@ export default function HomeScreen() {
         )}
 
         {/* Placeholder battery indicator */}
+
+        <TouchableOpacity
+        style={[styles.syncButton, { marginTop: 12, backgroundColor: '#888' }]}
+        onPress={async () => {
+        const pct = await readBatteryPercent();
+        Alert.alert(
+      'Battery Test',
+      pct == null ? 'No reading' : `Battery: ${pct}%`
+    );
+  }}
+>
+  <Text style={{ color: '#fff', fontWeight: 'bold' }}>Test Battery Read</Text>
+</TouchableOpacity>
+
+
         <Text style={styles.batteryText}>🔋 70% battery remaining</Text>
       </ScrollView>
     </SafeAreaView>
