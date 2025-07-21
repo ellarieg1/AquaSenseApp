@@ -130,45 +130,107 @@ export default function SettingsScreen() {
     checkNotificationPermissions();
   }, []);
 
-  const fetchLocationAndWeather = async () => {
-    try {
-      setLoading(true);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') throw new Error('Location permission was denied.');
+  /* ------------------------------------------------------------------
+   Safe weather fetch: no crashes, works offline, handles permission deny
+------------------------------------------------------------------- */
+const DEFAULT_COORDS = { latitude: 40.7128, longitude: -74.0060 }; // NYC
+const DEFAULT_TEMP_F = 70;
 
-      let loc = await Location.getCurrentPositionAsync({});
-      let latitude = loc?.coords?.latitude || 40.7128;
-      let longitude = loc?.coords?.longitude || -74.0060;
+const fetchLocationAndWeather = async () => {
+  try {
+    setLoading(true);
 
-      let city = 'Unknown City';
-      let region = 'Unknown Region';
+    // --- LOCATION ---------------------------------------------------
+    let latitude = DEFAULT_COORDS.latitude;
+    let longitude = DEFAULT_COORDS.longitude;
+    let city = 'Unknown';
+    let region = '';
 
-      const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (reverse?.length > 0) {
-        const place = reverse[0];
-        city = place.city || place.name || place.subregion || 'New York';
-        region = place.region || place.country || 'New York';
+    const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (status === 'granted') {
+      const loc = await Location.getCurrentPositionAsync({});
+      latitude = loc.coords.latitude;
+      longitude = loc.coords.longitude;
+
+      const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (places?.length) {
+        const p = places[0];
+        city = p.city || p.name || p.subregion || city;
+        region = p.region || p.country || region;
       }
+    } else {
+      Alert.alert(
+        'Location Disabled',
+        'Using default location (New York, NY). Enable location for weather-based goals.'
+      );
+    }
 
-      setLocation(`${city}, ${region}`);
+    setLocation(region ? `${city}, ${region}` : city);
 
+    // --- WEATHER ----------------------------------------------------
+    let tempF = DEFAULT_TEMP_F;
+    try {
       const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
-      const weatherUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
-      const weatherResp = await fetch(weatherUrl);
-      const weatherData = await weatherResp.json();
-      const temp = weatherData.current?.temp;
+      const url =
+        `https://api.openweathermap.org/data/2.5/onecall` +
+        `?lat=${latitude}&lon=${longitude}` +
+        `&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
 
-      if (!temp) throw new Error('Weather data unavailable.');
-      setTemperature(temp); // Update via context
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Weather HTTP ${resp.status}`);
+      const json = await resp.json();
+      if (json?.current?.temp) tempF = json.current.temp;
+    } catch (wxErr) {
+      console.warn('Weather fetch failed – using default temp', wxErr);
+    }
 
-      const goal = calculateGoal();
-      setDailyGoal(goal);
+    // --- UPDATE STATE & STORAGE ------------------------------------
+    setTemperature(tempF);
+    const newGoal = calculateGoal();
+    setDailyGoal(newGoal);
 
-      await AsyncStorage.setItem('dailyGoal', goal.toString());
-      await AsyncStorage.setItem('remindersEnabled', JSON.stringify(remindersEnabled));
-      await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
-      updateSettings({ dailyGoal: goal, weight: parseInt(weight), exerciseHours: parseFloat(exerciseHours) });
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+    await AsyncStorage.multiSet([
+      ['dailyGoal', String(newGoal)],
+      ['remindersEnabled', JSON.stringify(remindersEnabled)],
+      ['reminderTimes', JSON.stringify(reminderTimes)],
+    ]);
+
+    updateSettings({
+      dailyGoal: newGoal,
+      weight: parseInt(weight, 10),
+      exerciseHours: parseFloat(exerciseHours),
+    });
+
+    // Upsert to Supabase (unchanged)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase
+        .from('user_settings')
+        .upsert(
+          {
+            user_id: user.id,
+            weight: parseInt(weight, 10),
+            age: parseInt(age, 10),
+            exercise_hours: parseFloat(exerciseHours),
+            daily_goal: newGoal,
+          },
+          { onConflict: 'user_id' }
+        );
+    }
+
+    Alert.alert(
+      'Hydration Goal Updated',
+      `Today's goal: ${newGoal} oz  •  Temp: ${Math.round(tempF)}°F`
+    );
+  } catch (err: any) {
+    console.error('fetchLocationAndWeather error:', err);
+    Alert.alert('Weather Error', err.message || 'Could not update goal.');
+  } finally {
+    setLoading(false);
+  }
+};
+
 if (!userError && user) {
   const { error: upsertError } = await supabase.from('user_settings').upsert({
     user_id: user.id,
