@@ -7,7 +7,8 @@
 import { decode as base64Decode } from 'base-64';
 import { Base64 } from 'js-base64';
 import { BleManager, Device, LogLevel } from 'react-native-ble-plx';
-import { BATTERY_LEVEL_UUID, BATTERY_SERVICE_UUID } from '../constants/ble'; // adjust path if different 
+import { BATTERY_LEVEL_UUID, BATTERY_SERVICE_UUID } from '../constants/ble';
+ 
  
 // Accept these names (case-insensitive) so "Arduino" fallback works 
 const TARGET_DEVICE_NAMES = ['AquaSense', 'Arduino']; 
@@ -86,7 +87,7 @@ async function syncOnce(): Promise<number | null> {
  
   const ml = extractMl(decoded); 
   log('parsed mL:', ml); 
- 
+-
   await safeDisconnect(connected); 
  
  

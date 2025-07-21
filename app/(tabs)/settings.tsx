@@ -35,7 +35,7 @@ export default function SettingsScreen() {
 
   /* ───────── helpers ───────── */
   const calculateGoal = () => {
-    const temp = temperature || 70;
+    const temp = temperature || 86;
     let extra = 0;
     if (temp >= 95) extra = 20;
     else if (temp >= 90) extra = 16;
@@ -104,7 +104,7 @@ export default function SettingsScreen() {
 
   /* ───────── safe location + weather fetch ───────── */
   const DEFAULT_COORDS = { latitude: 40.7128, longitude: -74.0060 };
-  const DEFAULT_TEMP_F = 70;
+  const DEFAULT_TEMP_F = 86;
 
   const fetchLocationAndWeather = async () => {
     try {
