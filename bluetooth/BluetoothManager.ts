@@ -4,6 +4,7 @@
 // connect->discover->read->disconnect; built-in cooldown to let ESP32 re-advertise.
 
 import { decode as base64Decode } from 'base-64';
+import { Base64 } from 'js-base64';
 import { BleManager, Device, LogLevel } from 'react-native-ble-plx';
 
 // Accept these names (case-insensitive) so "Arduino" fallback works
@@ -12,6 +13,9 @@ const TARGET_DEVICE_NAMES = ['AquaSense', 'Arduino'];
 // Known service / char from your sketch
 const SERVICE_UUID = '12345678-1234-1234-1234-1234567890ab';
 const CHARACTERISTIC_UUID = 'abcd1234-5678-90ab-cdef-1234567890ab';
+
+const BATTERY_SERVICE_UUID = '180F';
+const BATTERY_LEVEL_UUID = '2A19';
 
 // ms to wait after disconnect before resolving (gives re-advertise time)
 const COOLDOWN_MS = 1200;
@@ -159,3 +163,52 @@ async function safeDisconnect(d: Device) {
 }
 
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+// -----------------------------------------------------------------------------
+// NEW -- Battery helper: scan → connect → read Battery Level (0‑100) → disconnect
+// -----------------------------------------------------------------------------
+export async function readBatteryPercent(
+  timeoutMs = 10000
+): Promise<number | null> {
+  // Logic will go in the next steps
+    const device = await scanForCandidate(timeoutMs).catch((e) => {
+    console.warn('[battery] scan failed', e.message);
+    return null;
+  });
+  if (!device) return null;
+
+    try {
+    // Connect
+    const connected = await device.connect();
+    await connected.discoverAllServicesAndCharacteristics();
+
+    // Read Battery Level characteristic (0x2A19)
+    const chars = await connected.characteristicsForService(BATTERY_SERVICE_UUID);
+    const battChar = chars.find(
+      (c) => c.uuid.toLowerCase() === BATTERY_LEVEL_UUID.toLowerCase()
+    );
+
+    if (!battChar) {
+      console.warn('[battery] characteristic not found');
+      await safeDisconnect(connected);
+      return null;
+    }
+
+    const readVal = await battChar.read();
+    const pct = parseBatteryCharacteristic(readVal.value);
+
+    await safeDisconnect(connected);
+    await sleep(COOLDOWN_MS); // let device re‑advertise
+    return pct;
+  } catch (err) {
+    console.warn('[battery] read error', err);
+    return null;
+    }
+function parseBatteryCharacteristic(base64: string | null | undefined): number | null {
+  if (!base64) return null;
+  const bytes = Base64.toUint8Array(base64);
+  return bytes.length ? bytes[0] : null; // returns 0‑100
+  }
+
+}
+
