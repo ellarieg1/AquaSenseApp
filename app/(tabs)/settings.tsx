@@ -22,7 +22,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 
 export default function SettingsScreen() {
-  /* -------------- state -------------- */
+  /* ───────── state ───────── */
   const { updateSettings, setTemperature, temperature } = useSettings();
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [reminderTimes, setReminderTimes] = useState<string[]>([]);
@@ -33,15 +33,15 @@ export default function SettingsScreen() {
   const [dailyGoal, setDailyGoal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  /* -------------- helpers -------------- */
+  /* ───────── helpers ───────── */
   const calculateGoal = () => {
     const temp = temperature || 70;
-    let additional = 0;
-    if (temp >= 95) additional = 20;
-    else if (temp >= 90) additional = 16;
-    else if (temp >= 85) additional = 12;
-    else if (temp >= 75) additional = 8;
-    else if (temp >= 60) additional = 4;
+    let extra = 0;
+    if (temp >= 95) extra = 20;
+    else if (temp >= 90) extra = 16;
+    else if (temp >= 85) extra = 12;
+    else if (temp >= 75) extra = 8;
+    else if (temp >= 60) extra = 4;
 
     const ageNum = parseInt(age, 10);
     let ageAdj = 0;
@@ -50,8 +50,8 @@ export default function SettingsScreen() {
       else if (ageNum <= 18) ageAdj = 10;
     }
 
-    const base = parseInt(weight, 10) / 2 + parseFloat(exerciseHours || '0') * 10 + ageAdj;
-    return Math.round(base + additional);
+    const base = parseInt(weight || '0', 10) / 2 + parseFloat(exerciseHours || '0') * 10 + ageAdj;
+    return Math.round(base + extra);
   };
 
   const scheduleHydrationReminders = async (times: string[]) => {
@@ -65,7 +65,7 @@ export default function SettingsScreen() {
     }
   };
 
-  /* -------------- load existing settings -------------- */
+  /* ───────── load saved settings ───────── */
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -84,26 +84,25 @@ export default function SettingsScreen() {
           exerciseHours: data.exercise_hours,
         });
 
-        const savedTimes = await AsyncStorage.getItem('reminderTimes');
-        if (savedTimes) setReminderTimes(JSON.parse(savedTimes));
+        const saved = await AsyncStorage.getItem('reminderTimes');
+        if (saved) setReminderTimes(JSON.parse(saved));
       }
     })();
   }, []);
 
-  /* -------------- notification perm check -------------- */
+  /* ───────── notification perms ───────── */
   useEffect(() => {
-    Notifications.getPermissionsAsync().then(({ status }) => {
+    Notifications.getPermissionsAsync().then(async ({ status }) => {
       if (status !== 'granted') {
-        Notifications.requestPermissionsAsync().then(({ status: s }) => {
-          if (s !== 'granted') {
-            Alert.alert('Enable notifications to receive hydration reminders.');
-          }
-        });
+        const { status: s } = await Notifications.requestPermissionsAsync();
+        if (s !== 'granted') {
+          Alert.alert('Enable notifications to receive hydration reminders.');
+        }
       }
     });
   }, []);
 
-  /* -------------- safe location + weather fetch -------------- */
+  /* ───────── safe location + weather fetch ───────── */
   const DEFAULT_COORDS = { latitude: 40.7128, longitude: -74.0060 };
   const DEFAULT_TEMP_F = 70;
 
@@ -113,34 +112,48 @@ export default function SettingsScreen() {
 
       /* location */
       let { latitude, longitude } = DEFAULT_COORDS;
-      let city = 'Unknown', region = '';
+      let city = 'Unknown';
+      let region = '';
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({});
-        latitude = loc.coords.latitude; longitude = loc.coords.longitude;
-        const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
-        if (rev.length) {
-          const p = rev[0];
-          city = p.city || p.name || p.subregion || city;
-          region = p.region || p.country || region;
+        latitude = loc.coords.latitude;
+        longitude = loc.coords.longitude;
+
+        try {
+          const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
+          if (rev?.length) {
+            const p = rev[0];
+            city = p.city || p.name || p.subregion || city;
+            region = p.region || p.country || region;
+          }
+        } catch (geoErr: any) {
+          console.warn('reverseGeocode failed – fallback to lat/lon', geoErr?.message);
         }
       } else {
         Alert.alert('Location disabled', 'Using default location (NYC).');
       }
+
       setLocation(region ? `${city}, ${region}` : city);
 
       /* weather */
       let tempF = DEFAULT_TEMP_F;
       try {
         const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
-        const url = `https://api.openweathermap.org/data/2.5/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
+        const url =
+          `https://api.openweathermap.org/data/2.5/onecall?lat=${latitude}&lon=${longitude}` +
+          `&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
         const resp = await fetch(url);
         if (resp.ok) {
           const j = await resp.json();
           if (j?.current?.temp) tempF = j.current.temp;
         }
-      } catch { /* network fail -> keep default */ }
+      } catch (wxErr) {
+        console.warn('Weather fetch failed – using default temp', wxErr);
+      }
 
+      /* update state & backend */
       setTemperature(tempF);
       const newGoal = calculateGoal();
       setDailyGoal(newGoal);
@@ -174,13 +187,13 @@ export default function SettingsScreen() {
       Alert.alert('Hydration Goal Updated', `Goal: ${newGoal} oz  •  Temp: ${Math.round(tempF)}°F`);
     } catch (err: any) {
       console.error(err);
-      Alert.alert('Error', err.message || 'Could not update goal.');
+      Alert.alert('Weather Error', err.message || 'Could not update goal.');
     } finally {
       setLoading(false);
     }
   };
 
-  /* -------------- save prefs -------------- */
+  /* ───────── save prefs ───────── */
   const handleSave = async () => {
     try {
       Keyboard.dismiss();
@@ -213,7 +226,7 @@ export default function SettingsScreen() {
     }
   };
 
-  /* -------------- render -------------- */
+  /* ───────── render ───────── */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F2FAFC' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -238,18 +251,17 @@ export default function SettingsScreen() {
               </View>
             )}
 
-            {/* inputs */}
-            {[
-              { label: 'Weight (lbs)', value: weight, setter: setWeight, ph: '160' },
-              { label: 'Exercise Hours per Day', value: exerciseHours, setter: setExerciseHours, ph: '1' },
-              { label: 'Age (optional)', value: age, setter: setAge, ph: '25' },
+            {[ // inputs
+              { label: 'Weight (lbs)', val: weight, set: setWeight, ph: '160' },
+              { label: 'Exercise Hours per Day', val: exerciseHours, set: setExerciseHours, ph: '1' },
+              { label: 'Age (optional)', val: age, set: setAge, ph: '25' },
             ].map((f) => (
               <View style={styles.infoBlock} key={f.label}>
                 <Text style={styles.label}>{f.label}</Text>
                 <TextInput
                   style={styles.input}
-                  value={f.value}
-                  onChangeText={f.setter}
+                  value={f.val}
+                  onChangeText={f.set}
                   keyboardType="numeric"
                   placeholder={`e.g. ${f.ph}`}
                 />
@@ -262,7 +274,7 @@ export default function SettingsScreen() {
                 <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} />
               </View>
               <Text style={styles.reminderNote}>
-                You'll receive hydration reminders at 8 AM, 2 PM, 8 PM if enabled.
+                You'll receive hydration reminders at 8 AM, 2 PM, and 8 PM if enabled.
               </Text>
             </View>
 
@@ -283,150 +295,25 @@ export default function SettingsScreen() {
   );
 }
 
+/* ───────── styles ───────── */
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: '#F2FAFC',
-    paddingHorizontal: 20,
-    paddingTop: 30,
-    alignItems: 'center',
-  },
-  header: {
-  fontSize: 28,
-  fontWeight: '600', // softer than bold
-  color: '#1B4965', // your medium blue
-  textAlign: 'center',
-  marginBottom: 6,
-  letterSpacing: 0.5,
-  fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-},
-  tagline: {
-    fontSize: 15,
-    color: '#555555',
-    textAlign: 'center',
-    marginBottom: 24,
-    fontStyle: 'italic',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-  },
-  infoBlock: {
-    width: '100%',
-    marginBottom: 20,
-    backgroundColor: '#ffffffee',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
-  },
-  locationText: {
-    fontSize: 18,
-    color: '#1B4965',
-    fontWeight: '600',
-  },
-  temperatureText: {
-    fontSize: 18,
-    color: '#1B4965',
-    fontWeight: '600',
-  },
-  fetchButton: {
-    backgroundColor: '#41b8d5',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 25,
-    alignItems: 'center',
-    marginBottom: 22,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  fetchButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  input: {
-    backgroundColor: '#F9F9F9',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    color: '#000',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-  },
-  goalBlock: {
-    alignItems: 'center',
-    backgroundColor: '#ffffffee',
-    paddingVertical: 26,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-    marginVertical: 26,
-    width: '100%',
-  },
-  goalLabel: {
-    fontSize: 17,
-    color: '#555555',
-    marginBottom: 8,
-    fontWeight: '600',
-  },
-  goalValue: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: '#41b8d5',
-  },
-  saveButton: {
-    backgroundColor: '#1B4965',
-    paddingVertical: 16,
-    paddingHorizontal: 30,
-    borderRadius: 25,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 40,
-    elevation: 3,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  reminderCard: {
-    width: '100%',
-    backgroundColor: '#ffffffee',
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  reminderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  reminderLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1B4965',
-  },
-  reminderNote: {
-    fontSize: 14,
-    color: '#444',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-  },
+  container: { flexGrow: 1, backgroundColor: '#F2FAFC', paddingHorizontal: 20, paddingTop: 30, alignItems: 'center' },
+  header: { fontSize: 28, fontWeight: '600', color: '#1B4965', textAlign: 'center', marginBottom: 6 },
+  tagline: { fontSize: 15, color: '#555', textAlign: 'center', marginBottom: 24, fontStyle: 'italic' },
+  infoBlock: { width: '100%', marginBottom: 20, backgroundColor: '#ffffffee', borderRadius: 20, padding: 20, elevation: 2 },
+  label: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 6 },
+  locationText: { fontSize: 18, color: '#1B4965', fontWeight: '600' },
+  temperatureText: { fontSize: 18, color: '#1B4965', fontWeight: '600' },
+  fetchButton: { backgroundColor: '#41b8d5', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 25, alignItems: 'center', marginBottom: 22 },
+  fetchButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  input: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#ccc', borderRadius: 14, paddingVertical: 12, paddingHorizontal: 15, fontSize: 16 },
+  goalBlock: { alignItems: 'center', backgroundColor: '#ffffffee', paddingVertical: 26, paddingHorizontal: 16, borderRadius: 20, elevation: 3, marginVertical: 26, width: '100%' },
+  goalLabel: { fontSize: 17, color: '#555', marginBottom: 8, fontWeight: '600' },
+  goalValue: { fontSize: 30, fontWeight: 'bold', color: '#41b8d5' },
+  saveButton: { backgroundColor: '#1B4965', paddingVertical: 16, paddingHorizontal: 30, borderRadius: 25, alignItems: 'center', marginBottom: 40 },
+  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  reminderCard: { width: '100%', backgroundColor: '#ffffffee', padding: 20, borderRadius: 20, marginBottom: 24, elevation: 2 },
+  reminderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  reminderLabel: { fontSize: 16, fontWeight: '700', color: '#1B4965' },
+  reminderNote: { fontSize: 14, color: '#444' },
 });
