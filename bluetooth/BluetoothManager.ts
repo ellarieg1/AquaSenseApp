@@ -4,9 +4,9 @@
 // connect->discover->read->disconnect; built-in cooldown to let ESP32 re-advertise. 
  
  
-import { decode as base64Decode } from 'base-64'; 
-import { Base64 } from 'js-base64'; 
-import { BleManager, Device, LogLevel } from 'react-native-ble-plx'; 
+import { decode as base64Decode } from 'base-64';
+import { Base64 } from 'js-base64';
+import { BleManager, Device, LogLevel } from 'react-native-ble-plx';
  
  
 // Accept these names (case-insensitive) so "Arduino" fallback works 
@@ -90,8 +90,7 @@ async function syncOnce(): Promise<number | null> {
  
   const ml = extractMl(decoded); 
   log('parsed mL:', ml); 
-------------------------------------------------------- 
- 
+-
   await safeDisconnect(connected); 
  
  
