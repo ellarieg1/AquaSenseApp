@@ -62,6 +62,7 @@ export default function HomeScreen() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastMlRemaining, setLastMlRemaining] = useState<number | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
 
   const { temperature } = useSettings();
 
@@ -184,6 +185,10 @@ export default function HomeScreen() {
     setIsSyncing(true);
     try {
       const mlRemaining = await connectToDeviceAndSync();
+
+      const pct = await readBatteryPercent();
+      setBatteryLevel(pct);
+      
       if (mlRemaining == null || isNaN(mlRemaining)) {
         Alert.alert('Sync Failed', 'Bottle sent no data. Make sure it is stable and nearby.');
         return;
@@ -292,7 +297,9 @@ export default function HomeScreen() {
         )}
 
         {/* Placeholder battery indicator */}
-        <Text style={styles.batteryText}>🔋 70% battery remaining</Text>
+        {batteryLevel !== null && (
+          <Text style={styles.batteryText}>🔋 {batteryLevel}% battery remaining</Text>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
