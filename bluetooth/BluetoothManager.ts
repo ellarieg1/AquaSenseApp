@@ -35,7 +35,7 @@ let inFlight: Promise<number | null> | null = null;
  * Public API used by HomeScreen.
  * Returns current *remaining* mL in bottle (rounded) or null if unreadable.
  */
-export function connectToDeviceAndSync(): Promise<number | null> {
+export function connectToDeviceAndSync(): Promise< { ml: number | null; batteryPct: number | null }> {
   if (inFlight) {
     log('sync in progress; reusing promise');
     return inFlight;
@@ -74,6 +74,25 @@ async function syncOnce(): Promise<number | null> {
 
   const ml = extractMl(decoded);
   log('parsed mL:', ml);
+
+  let batteryPct: number | null = null;
+
+  try {
+  const battChars = await connected.characteristicsForService(BATTERY_SERVICE_UUID);
+  const battChar = battChars.find(
+    (c) => c.uuid.toLowerCase() === BATTERY_LEVEL_UUID.toLowerCase()
+  );
+  if (battChar) {
+    const battVal = await battChar.read();
+    batteryPct = parseBatteryCharacteristic(battVal.value);
+    log('battery %:', batteryPct);
+  } else {
+    log('battery characteristic not found');
+  }
+} catch (e) {
+  log('battery read error', e);
+}
+
 
   await safeDisconnect(connected);
 
@@ -204,10 +223,12 @@ export async function readBatteryPercent(
     console.warn('[battery] read error', err);
     return null;
     }
+    
+// ---- helper: decode 1‑byte battery percentage ----
 function parseBatteryCharacteristic(base64: string | null | undefined): number | null {
   if (!base64) return null;
   const bytes = Base64.toUint8Array(base64);
-  return bytes.length ? bytes[0] : null; // returns 0‑100
+  return bytes.length ? bytes[0] : null; // 0‑100
   }
 
 }

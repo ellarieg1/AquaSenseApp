@@ -61,6 +61,7 @@ export default function HomeScreen() {
   const [currentIntake, setCurrentIntake] = useState(0); // today's consumed oz (replaces old hard-coded 24)
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastMlRemaining, setLastMlRemaining] = useState<number | null>(null);
+  const [batteryPct, setBatteryPct] = useState<number | null>(null);
 
   const { temperature } = useSettings();
 
@@ -197,7 +198,10 @@ export default function HomeScreen() {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const mlRemaining = await connectToDeviceAndSync(); // BLE value = remaining
+      const { ml: mlRemaining, batteryPct: newBatteryPct } = await connectToDeviceAndSync(); // BLE value = remaining
+      if (newBatteryPct != null) {
+        setBatteryPct(newBatteryPct);
+      }
       if (mlRemaining == null || isNaN(mlRemaining)) {
         Alert.alert(
           'Sync Failed',
@@ -332,7 +336,9 @@ export default function HomeScreen() {
 </TouchableOpacity>
 
 
-        <Text style={styles.batteryText}>🔋 70% battery remaining</Text>
+        <Text style={styles.batteryText}>
+          { batteryPct == null ? '🔋- % (unknown)' : `🔋 ${batteryPct}% battery remaining`}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
