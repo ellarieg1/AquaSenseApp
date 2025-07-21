@@ -198,7 +198,9 @@ export default function HomeScreen() {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const { ml: mlRemaining, batteryPct: newBatteryPct } = await connectToDeviceAndSync(); // BLE value = remaining
+      const { ml: mlRemaining, batteryPct: newBatteryPct, raw } = 
+        await connectToDeviceAndSync(); // BLE value = remaining
+        Alert.alert('Bottle raw payload', raw);
       if (newBatteryPct != null) {
         setBatteryPct(newBatteryPct);
       }
