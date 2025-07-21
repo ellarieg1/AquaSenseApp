@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import React, { useEffect, useState } from 'react';
@@ -16,17 +15,17 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 
 export default function SettingsScreen() {
+  /* -------------- state -------------- */
   const { updateSettings, setTemperature, temperature } = useSettings();
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [reminderTimes, setReminderTimes] = useState<string[]>([]);
-  const [showPicker, setShowPicker] = useState(false);
   const [location, setLocation] = useState('Unknown');
   const [weight, setWeight] = useState('');
   const [exerciseHours, setExerciseHours] = useState('');
@@ -34,69 +33,46 @@ export default function SettingsScreen() {
   const [dailyGoal, setDailyGoal] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  /* -------------- helpers -------------- */
   const calculateGoal = () => {
     const temp = temperature || 70;
-    let additionalWater = 0;
-    if (temp >= 95) additionalWater = 20;
-    else if (temp >= 90) additionalWater = 16;
-    else if (temp >= 85) additionalWater = 12;
-    else if (temp >= 75) additionalWater = 8;
-    else if (temp >= 60) additionalWater = 4;
+    let additional = 0;
+    if (temp >= 95) additional = 20;
+    else if (temp >= 90) additional = 16;
+    else if (temp >= 85) additional = 12;
+    else if (temp >= 75) additional = 8;
+    else if (temp >= 60) additional = 4;
 
     const ageNum = parseInt(age, 10);
-    let ageAdjustment = 0;
+    let ageAdj = 0;
     if (!isNaN(ageNum)) {
-      if (ageNum >= 65) ageAdjustment = 12;
-      else if (ageNum <= 18) ageAdjustment = 10;
+      if (ageNum >= 65) ageAdj = 12;
+      else if (ageNum <= 18) ageAdj = 10;
     }
 
-    const baseGoal = parseInt(weight, 10) / 2 + parseFloat(exerciseHours) * 10 + ageAdjustment;
-    return Math.round(baseGoal + additionalWater);
+    const base = parseInt(weight, 10) / 2 + parseFloat(exerciseHours || '0') * 10 + ageAdj;
+    return Math.round(base + additional);
   };
 
   const scheduleHydrationReminders = async (times: string[]) => {
     await Notifications.cancelAllScheduledNotificationsAsync();
-
-    for (const timeStr of times) {
-      const [hour, minute] = timeStr.split(':').map((t) => parseInt(t,10));
-      const trigger = {
-        hour,
-        minute,
-        repeats: true,
-        type: 'calendar',
-      } as const;
-
+    for (const t of times) {
+      const [h, m] = t.split(':').map(Number);
       await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '💧 Time to hydrate!',
-          body: "Don't forget to drink some water!",
-        },
-        trigger,
+        content: { title: '💧 Time to hydrate!', body: "Don't forget to drink water!" },
+        trigger: { type: 'calendar', hour: h, minute: m, repeats: true },
       });
     }
   };
 
+  /* -------------- load existing settings -------------- */
   useEffect(() => {
-    const loadSettings = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user) {
-        console.error('Auth error or no user:', error);
-        return;
-      }
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      const { data, error: fetchError } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (fetchError) {
-        console.error('Fetch settings error:', fetchError.message);
-        return;
-      }
-
+      const { data } = await supabase.from('user_settings').select('*').eq('user_id', user.id).single();
       if (data) {
-        console.log('Fetched settings:', data);
         setWeight(data.weight?.toString() || '');
         setAge(data.age?.toString() || '');
         setExerciseHours(data.exercise_hours?.toString() || '');
@@ -108,106 +84,82 @@ export default function SettingsScreen() {
           exerciseHours: data.exercise_hours,
         });
 
-        await AsyncStorage.setItem('dailyGoal', data.daily_goal.toString());
         const savedTimes = await AsyncStorage.getItem('reminderTimes');
         if (savedTimes) setReminderTimes(JSON.parse(savedTimes));
       }
-    };
-
-    loadSettings();
+    })();
   }, []);
 
+  /* -------------- notification perm check -------------- */
   useEffect(() => {
-    const checkNotificationPermissions = async () => {
-      const { status } = await Notifications.getPermissionsAsync();
+    Notifications.getPermissionsAsync().then(({ status }) => {
       if (status !== 'granted') {
-        const { status: newStatus } = await Notifications.requestPermissionsAsync();
-        if (newStatus !== 'granted') {
-          Alert.alert('Notification permissions required', 'Please enable notifications to receive hydration reminders.');
-        }
+        Notifications.requestPermissionsAsync().then(({ status: s }) => {
+          if (s !== 'granted') {
+            Alert.alert('Enable notifications to receive hydration reminders.');
+          }
+        });
       }
-    };
-    checkNotificationPermissions();
+    });
   }, []);
 
-  /* ------------------------------------------------------------------
-   Safe weather fetch: no crashes, works offline, handles permission deny
-------------------------------------------------------------------- */
-const DEFAULT_COORDS = { latitude: 40.7128, longitude: -74.0060 }; // NYC
-const DEFAULT_TEMP_F = 70;
+  /* -------------- safe location + weather fetch -------------- */
+  const DEFAULT_COORDS = { latitude: 40.7128, longitude: -74.0060 };
+  const DEFAULT_TEMP_F = 70;
 
-const fetchLocationAndWeather = async () => {
-  try {
-    setLoading(true);
-
-    // --- LOCATION ---------------------------------------------------
-    let latitude = DEFAULT_COORDS.latitude;
-    let longitude = DEFAULT_COORDS.longitude;
-    let city = 'Unknown';
-    let region = '';
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-
-    if (status === 'granted') {
-      const loc = await Location.getCurrentPositionAsync({});
-      latitude = loc.coords.latitude;
-      longitude = loc.coords.longitude;
-
-      const places = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (places?.length) {
-        const p = places[0];
-        city = p.city || p.name || p.subregion || city;
-        region = p.region || p.country || region;
-      }
-    } else {
-      Alert.alert(
-        'Location Disabled',
-        'Using default location (New York, NY). Enable location for weather-based goals.'
-      );
-    }
-
-    setLocation(region ? `${city}, ${region}` : city);
-
-    // --- WEATHER ----------------------------------------------------
-    let tempF = DEFAULT_TEMP_F;
+  const fetchLocationAndWeather = async () => {
     try {
-      const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
-      const url =
-        `https://api.openweathermap.org/data/2.5/onecall` +
-        `?lat=${latitude}&lon=${longitude}` +
-        `&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
+      setLoading(true);
 
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`Weather HTTP ${resp.status}`);
-      const json = await resp.json();
-      if (json?.current?.temp) tempF = json.current.temp;
-    } catch (wxErr) {
-      console.warn('Weather fetch failed – using default temp', wxErr);
-    }
+      /* location */
+      let { latitude, longitude } = DEFAULT_COORDS;
+      let city = 'Unknown', region = '';
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        latitude = loc.coords.latitude; longitude = loc.coords.longitude;
+        const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (rev.length) {
+          const p = rev[0];
+          city = p.city || p.name || p.subregion || city;
+          region = p.region || p.country || region;
+        }
+      } else {
+        Alert.alert('Location disabled', 'Using default location (NYC).');
+      }
+      setLocation(region ? `${city}, ${region}` : city);
 
-    // --- UPDATE STATE & STORAGE ------------------------------------
-    setTemperature(tempF);
-    const newGoal = calculateGoal();
-    setDailyGoal(newGoal);
+      /* weather */
+      let tempF = DEFAULT_TEMP_F;
+      try {
+        const apiKey = '592a8ed7fc26ff9db2aef80214df0c41';
+        const url = `https://api.openweathermap.org/data/2.5/onecall?lat=${latitude}&lon=${longitude}&exclude=minutely,hourly,daily,alerts&units=imperial&appid=${apiKey}`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const j = await resp.json();
+          if (j?.current?.temp) tempF = j.current.temp;
+        }
+      } catch { /* network fail -> keep default */ }
 
-    await AsyncStorage.multiSet([
-      ['dailyGoal', String(newGoal)],
-      ['remindersEnabled', JSON.stringify(remindersEnabled)],
-      ['reminderTimes', JSON.stringify(reminderTimes)],
-    ]);
+      setTemperature(tempF);
+      const newGoal = calculateGoal();
+      setDailyGoal(newGoal);
 
-    updateSettings({
-      dailyGoal: newGoal,
-      weight: parseInt(weight, 10),
-      exerciseHours: parseFloat(exerciseHours),
-    });
+      await AsyncStorage.multiSet([
+        ['dailyGoal', String(newGoal)],
+        ['remindersEnabled', JSON.stringify(remindersEnabled)],
+        ['reminderTimes', JSON.stringify(reminderTimes)],
+      ]);
 
-    // Upsert to Supabase (unchanged)
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase
-        .from('user_settings')
-        .upsert(
+      updateSettings({
+        dailyGoal: newGoal,
+        weight: parseInt(weight, 10),
+        exerciseHours: parseFloat(exerciseHours),
+      });
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('user_settings').upsert(
           {
             user_id: user.id,
             weight: parseInt(weight, 10),
@@ -217,180 +169,118 @@ const fetchLocationAndWeather = async () => {
           },
           { onConflict: 'user_id' }
         );
-    }
+      }
 
-    Alert.alert(
-      'Hydration Goal Updated',
-      `Today's goal: ${newGoal} oz  •  Temp: ${Math.round(tempF)}°F`
-    );
-  } catch (err: any) {
-    console.error('fetchLocationAndWeather error:', err);
-    Alert.alert('Weather Error', err.message || 'Could not update goal.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-if (!userError && user) {
-  const { error: upsertError } = await supabase.from('user_settings').upsert({
-    user_id: user.id,
-    weight: parseInt(weight, 10),
-    age: parseInt(age, 10),
-    exercise_hours: parseFloat(exerciseHours),
-    daily_goal: goal,
-  });
-  if (upsertError) {
-    console.error('Error writing goal to Supabase:', upsertError.message);
-  }
-}
-
-      Alert.alert('Hydration Goal Updated!', `Today's hydration goal: ${goal} oz (Temp: ${temp}°F)`);
+      Alert.alert('Hydration Goal Updated', `Goal: ${newGoal} oz  •  Temp: ${Math.round(tempF)}°F`);
     } catch (err: any) {
-      console.error('Error:', err.message);
-      Alert.alert('Error', err.message);
+      console.error(err);
+      Alert.alert('Error', err.message || 'Could not update goal.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddReminder = (event: DateTimePickerEvent, selectedTime?: Date) => {
-    if (event.type === 'set' && selectedTime) {
-      const timeString = selectedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      if (!reminderTimes.includes(timeString)) {
-        setReminderTimes((prev) => [...prev, timeString]);
-      }
-    }
-  };
-
-  const handleRemoveReminder = (time: string) => {
-    setReminderTimes((prev) => prev.filter((t) => t !== time));
-  };
-
+  /* -------------- save prefs -------------- */
   const handleSave = async () => {
     try {
       Keyboard.dismiss();
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('User not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
       const goal = calculateGoal();
       setDailyGoal(goal);
 
-      const { error } = await supabase.from('user_settings').upsert({
-        user_id: user.id,
-        weight: parseInt(weight, 10),
-        age: parseInt(age, 10),
-        exercise_hours: parseFloat(exerciseHours),
-        daily_goal: goal,
-    },
-    { onConflict: 'user_id' } // 👈 this resolves the duplicate key error
-  );
-      if (error) throw new Error(error.message);
+      const { error } = await supabase.from('user_settings').upsert(
+        {
+          user_id: user.id,
+          weight: parseInt(weight, 10),
+          age: parseInt(age, 10),
+          exercise_hours: parseFloat(exerciseHours),
+          daily_goal: goal,
+        },
+        { onConflict: 'user_id' }
+      );
+      if (error) throw error;
 
       await AsyncStorage.setItem('remindersEnabled', JSON.stringify(remindersEnabled));
       await AsyncStorage.setItem('reminderTimes', JSON.stringify(reminderTimes));
       if (remindersEnabled) await scheduleHydrationReminders(reminderTimes);
 
-      Alert.alert('Preferences Saved', 'Your hydration settings were saved successfully.');
+      Alert.alert('Preferences Saved', 'Your hydration settings have been updated.');
     } catch (err: any) {
-      console.error('Save error:', err.message);
-      Alert.alert('Error', err.message);
+      console.error(err);
+      Alert.alert('Save Error', err.message);
     }
   };
 
+  /* -------------- render -------------- */
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F2FAFC' }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView contentContainerStyle={[styles.container, { paddingBottom: 80 }]} keyboardShouldPersistTaps="handled">
+            <Text style={styles.header}>Settings</Text>
+            <Text style={styles.tagline}>Personalize your hydration goals</Text>
 
-return (
-  <SafeAreaView style={{ flex: 1, backgroundColor: '#F2FAFC' }}>
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          contentContainerStyle={[styles.container, { paddingBottom: 80 }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.header}>Settings</Text>
-          <Text style={styles.tagline}>Personalize your hydration goals</Text>
-
-          <View style={styles.infoBlock}>
-            <Text style={styles.label}>Current Location:</Text>
-            <Text style={styles.locationText}>{location}</Text>
-          </View>
-
-          <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>
-            )}
-          </TouchableOpacity>
-
-          {temperature !== null && (
             <View style={styles.infoBlock}>
-              <Text style={styles.label}>Current Temperature:</Text>
-              <Text style={styles.temperatureText}>{temperature}°F</Text>
+              <Text style={styles.label}>Current Location:</Text>
+              <Text style={styles.locationText}>{location}</Text>
             </View>
-          )}
 
-          <View style={styles.infoBlock}>
-            <Text style={styles.label}>Weight (lbs)</Text>
-            <TextInput
-              style={styles.input}
-              value={weight}
-              onChangeText={setWeight}
-              keyboardType="numeric"
-              placeholder="e.g. 160"
-            />
-          </View>
+            <TouchableOpacity style={styles.fetchButton} onPress={fetchLocationAndWeather}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.fetchButtonText}>Fetch Location & Weather</Text>}
+            </TouchableOpacity>
 
-          <View style={styles.infoBlock}>
-            <Text style={styles.label}>Exercise Hours per Day</Text>
-            <TextInput
-              style={styles.input}
-              value={exerciseHours}
-              onChangeText={setExerciseHours}
-              keyboardType="numeric"
-              placeholder="e.g. 1"
-            />
-          </View>
+            {temperature !== null && (
+              <View style={styles.infoBlock}>
+                <Text style={styles.label}>Current Temperature:</Text>
+                <Text style={styles.temperatureText}>{temperature}°F</Text>
+              </View>
+            )}
 
-          <View style={styles.infoBlock}>
-            <Text style={styles.label}>Age (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={age}
-              onChangeText={setAge}
-              keyboardType="numeric"
-              placeholder="e.g. 25"
-            />
-          </View>
+            {/* inputs */}
+            {[
+              { label: 'Weight (lbs)', value: weight, setter: setWeight, ph: '160' },
+              { label: 'Exercise Hours per Day', value: exerciseHours, setter: setExerciseHours, ph: '1' },
+              { label: 'Age (optional)', value: age, setter: setAge, ph: '25' },
+            ].map((f) => (
+              <View style={styles.infoBlock} key={f.label}>
+                <Text style={styles.label}>{f.label}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={f.value}
+                  onChangeText={f.setter}
+                  keyboardType="numeric"
+                  placeholder={`e.g. ${f.ph}`}
+                />
+              </View>
+            ))}
 
-          <View style={styles.reminderCard}>
-            <View style={styles.reminderHeader}>
-              <Text style={styles.reminderLabel}>Hydration Reminders</Text>
-              <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} />
+            <View style={styles.reminderCard}>
+              <View style={styles.reminderHeader}>
+                <Text style={styles.reminderLabel}>Hydration Reminders</Text>
+                <Switch value={remindersEnabled} onValueChange={setRemindersEnabled} />
+              </View>
+              <Text style={styles.reminderNote}>
+                You'll receive hydration reminders at 8 AM, 2 PM, 8 PM if enabled.
+              </Text>
             </View>
-            <Text style={styles.reminderNote}>
-              You'll receive hydration reminders at 8 AM, 2 PM, and 8 PM if enabled.
-            </Text>
-          </View>
 
-          {dailyGoal > 0 && (
-            <View style={styles.goalBlock}>
-              <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
-              <Text style={styles.goalValue}>{dailyGoal} oz</Text>
-            </View>
-          )}
+            {dailyGoal > 0 && (
+              <View style={styles.goalBlock}>
+                <Text style={styles.goalLabel}>Today's Hydration Goal</Text>
+                <Text style={styles.goalValue}>{dailyGoal} oz</Text>
+              </View>
+            )}
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Preferences</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
-  </SafeAreaView>
-);
+            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+              <Text style={styles.saveButtonText}>Save Preferences</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
