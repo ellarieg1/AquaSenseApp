@@ -1,11 +1,6 @@
 // 📁 /tabs/HomeScreen.tsx
 //--------------------------------------------------------
 //  AquaSense Home
-//  - Shows daily goal + intake progress
-//  - Sync button reads *remaining* mL from bottle (BLE)
-//  - Drop in remaining => water consumed (adds to progress)
-//  - Increase in remaining => refill (reset baseline; no intake)
-//  - Daily intake resets at midnight (device local)
 //--------------------------------------------------------
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,168 +22,117 @@ import { connectToDeviceAndSync, readBatteryPercent } from '../../bluetooth/Blue
 import InstructionsModal from '../../components/InstructionsModal';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
-import {
-  requestNotificationPermissions,
-  scheduleReminder,
-} from '../../utils/notificationUtils';
+import { requestNotificationPermissions, scheduleReminder } from '../../utils/notificationUtils';
 
 /* ------------------------------------------------------------------
-   Sensor interpretation thresholds
+   Constants
 ------------------------------------------------------------------- */
-const NOISE_ML = 5;   // ignore tiny changes <5 mL
-const REFILL_ML = 50; // increase >50 mL treated as refill
+const NOISE_ML  = 5;   // ignore tiny changes <5 mL
+const REFILL_ML = 50;  // increase >50 mL treated as refill
 
-/* ------------------------------------------------------------------
-   AsyncStorage keys
-------------------------------------------------------------------- */
-const KEY_LAST_ML = '@aqua:lastMlRemaining';
-const KEY_CONSUMED_PREFIX = '@aqua:consumedOz:'; // append YYYY-MM-DD (local date)
+const KEY_LAST_ML        = '@aqua:lastMlRemaining';
+const KEY_CONSUMED_PREFIX = '@aqua:consumedOz:'; // + YYYY-MM-DD
 
-/* local YYYY-MM-DD */
-function todayKey(): string {
+const todayKey = () => {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export default function HomeScreen() {
-  //------------------------------
-  // Local state
-  //------------------------------
-  const [dailyGoal, setDailyGoal] = useState(75);
-  const [currentIntake, setCurrentIntake] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastMlRemaining, setLastMlRemaining] = useState<number | null>(null);
-  const [showInstructions, setShowInstructions] = useState(false);
-  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  /* ---------------- state ---------------- */
+  const [dailyGoal,      setDailyGoal]      = useState(75);
+  const [currentIntake,  setCurrentIntake]  = useState(0);
+  const [isSyncing,      setIsSyncing]      = useState(false);
+  const [lastMlRemaining,setLastMlRemaining]= useState<number | null>(null);
+  const [showInstructions,setShowInstructions]=useState(false);
+  const [batteryLevel,   setBatteryLevel]   = useState<number | null>(null);
 
   const { temperature } = useSettings();
 
-  //------------------------------
-  // Show instructions once
-  //------------------------------
+  /* ---------------- show instructions once ---------------- */
   useEffect(() => {
     (async () => {
-      const seen = await AsyncStorage.getItem('@aqua:instructionsSeen');
-      if (!seen) setShowInstructions(true);
-    })();
-  }, []);
-
-  //------------------------------
-  // Progress ring %
-  //------------------------------
-  const progressRatio = dailyGoal > 0 ? currentIntake / dailyGoal : 0;
-  const progressPercent = Math.min(100, Math.max(0, Math.round(progressRatio * 100)));
-
-  //------------------------------
-  // Keys by date
-  //------------------------------
-  const today = todayKey();
-  const TODAY_CONSUMED_KEY = KEY_CONSUMED_PREFIX + today;
-
-  //------------------------------
-  // Initial load
-  //------------------------------
-  useEffect(() => {
-    (async () => {
-      try {
-        const storedMl = await AsyncStorage.getItem(KEY_LAST_ML);
-        if (storedMl != null && !isNaN(Number(storedMl))) {
-          setLastMlRemaining(Number(storedMl));
-        }
-
-        const storedConsumed = await AsyncStorage.getItem(TODAY_CONSUMED_KEY);
-        if (storedConsumed != null && !isNaN(Number(storedConsumed))) {
-          setCurrentIntake(Number(storedConsumed));
-        } else {
-          await AsyncStorage.setItem(TODAY_CONSUMED_KEY, '0');
-        }
-      } catch (err) {
-        console.warn('Home init load error:', err);
+      if (!(await AsyncStorage.getItem('@aqua:instructionsSeen'))) {
+        setShowInstructions(true);
       }
     })();
   }, []);
 
-  //------------------------------
-  // Midnight reset
-  //------------------------------
+  /* ---------------- progress ring ---------------- */
+  const progressRatio   = dailyGoal > 0 ? currentIntake / dailyGoal : 0;
+  const progressPercent = Math.min(100, Math.max(0, Math.round(progressRatio * 100)));
+
+  /* ---------------- keys ---------------- */
+  const TODAY_CONSUMED_KEY = KEY_CONSUMED_PREFIX + todayKey();
+
+  /* ---------------- initial load ---------------- */
+  useEffect(() => {
+    (async () => {
+      const storedMl = await AsyncStorage.getItem(KEY_LAST_ML);
+      if (storedMl && !isNaN(+storedMl)) setLastMlRemaining(+storedMl);
+
+      const storedOz = await AsyncStorage.getItem(TODAY_CONSUMED_KEY);
+      if (storedOz && !isNaN(+storedOz)) setCurrentIntake(+storedOz);
+      else await AsyncStorage.setItem(TODAY_CONSUMED_KEY, '0');
+    })();
+  }, []);
+
+  /* ---------------- midnight reset ---------------- */
   useFocusEffect(
     useCallback(() => {
-      const checkDate = async () => {
-        const todayNow = todayKey();
-        const key = KEY_CONSUMED_PREFIX + todayNow;
-        const stored = await AsyncStorage.getItem(key);
-        if (stored != null && !isNaN(Number(stored))) {
-          setCurrentIntake(Number(stored));
-        } else {
+      (async () => {
+        const key = KEY_CONSUMED_PREFIX + todayKey();
+        const saved = await AsyncStorage.getItem(key);
+        if (saved && !isNaN(+saved)) setCurrentIntake(+saved);
+        else {
           setCurrentIntake(0);
           await AsyncStorage.setItem(key, '0');
         }
-      };
-      checkDate();
+      })();
     }, [])
   );
 
-  //------------------------------
-  // Load goal from Supabase
-  //------------------------------
+  /* ---------------- load goal from Supabase ---------------- */
   useFocusEffect(
     useCallback(() => {
-      const loadDailyGoal = async () => {
+      (async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-
-        const { data } = await supabase
-          .from('user_settings')
-          .select('daily_goal')
-          .eq('user_id', user.id)
-          .single();
-
+        const { data } = await supabase.from('user_settings').select('daily_goal').eq('user_id', user.id).single();
         if (data?.daily_goal) {
           setDailyGoal(data.daily_goal);
-          await AsyncStorage.setItem('dailyGoal', data.daily_goal.toString());
+          await AsyncStorage.setItem('dailyGoal', String(data.daily_goal));
         }
-      };
-      loadDailyGoal();
+      })();
     }, [])
   );
 
-  //------------------------------
-  // Schedule reminders once
-  //------------------------------
+  /* ---------------- schedule reminders once ---------------- */
   useEffect(() => {
     (async () => {
       await requestNotificationPermissions();
-      await scheduleReminder(8, 0, '💧 Morning Reminder', 'Fuel your morning — take your first sip!');
+      await scheduleReminder(8,  0, '💧 Morning Reminder',   'Fuel your morning — take your first sip!');
       await scheduleReminder(14, 0, '💧 Afternoon Reminder', 'Time for a hydration check!');
-      await scheduleReminder(20, 0, '💧 Evening Reminder', 'End your day strong. One last hydration boost!');
+      await scheduleReminder(20, 0, '💧 Evening Reminder',   'End your day strong. One last hydration boost!');
     })();
   }, []);
 
   const isHot = temperature > 85;
 
-  //------------------------------
-  // Baseline helper
-  //------------------------------
-  async function setBaseline(ml: number) {
+  /* ---------------- helpers ---------------- */
+  const setBaseline = async (ml: number) => {
     setLastMlRemaining(ml);
     await AsyncStorage.setItem(KEY_LAST_ML, String(ml));
-  }
+  };
 
-  //------------------------------
-  // Sync handler
-  //------------------------------
-  async function handleSync() {
+  /* ---------------- sync handler ---------------- */
+  const handleSync = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
       const mlRemaining = await connectToDeviceAndSync();
+      setBatteryLevel(await readBatteryPercent());
 
-      const pct = await readBatteryPercent();
-      setBatteryLevel(pct);
-      
       if (mlRemaining == null || isNaN(mlRemaining)) {
         Alert.alert('Sync Failed', 'Bottle sent no data. Make sure it is stable and nearby.');
         return;
@@ -200,36 +144,35 @@ export default function HomeScreen() {
         return;
       }
 
-      const delta = lastMlRemaining - mlRemaining;     // drank
-      const increase = mlRemaining - lastMlRemaining;  // refill
+      const delta    = lastMlRemaining - mlRemaining; // drank
+      const increase = mlRemaining    - lastMlRemaining; // refill
 
       if (delta > NOISE_ML) {
-  const oz = Number((delta * 0.033814).toFixed(2));
+        const oz = +(delta * 0.033814).toFixed(2);
 
-  setCurrentIntake((prev) => {
-    const next = Number((prev + oz).toFixed(2));
-    AsyncStorage.setItem(TODAY_CONSUMED_KEY, String(next)).catch(() => {});
-    return next;
-  });
+        setCurrentIntake(prev => {
+          const next = +(prev + oz).toFixed(2);
+          AsyncStorage.setItem(TODAY_CONSUMED_KEY, String(next)).catch(() => {});
+          return next;
+        });
 
-  /* ---------- Supabase: write one log row ---------- */
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    try {
-      await supabase.from('hydration_logs').insert({
-        user_id: user.id,
-        date: new Date().toISOString(),
-        intake_ml: Math.round(delta),
-      });
-    } catch (e) {
-      console.warn('Supabase log failed – will retry next sync', e);
-    }
-  }
-  /* -------------------------------------------------- */
+        /* ---- Supabase insert (safe) ---- */
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          try {
+            await supabase.from('hydration_logs').insert({
+              user_id:   user.id,
+              date:      new Date().toISOString(),
+              intake_ml: Math.round(delta),
+            });
+          } catch (e) {
+            console.warn('Supabase log failed; will retry on next sync', e);
+          }
+        }
+        /* -------------------------------- */
 
-  await setBaseline(mlRemaining);
-  Alert.alert('Logged', `You drank ${oz} oz (${delta} mL).`);
-}
+        await setBaseline(mlRemaining);
+        Alert.alert('Logged', `You drank ${oz} oz (${delta} mL).`);
 
       } else if (increase > REFILL_ML) {
         await setBaseline(mlRemaining);
@@ -243,14 +186,11 @@ export default function HomeScreen() {
     } finally {
       setTimeout(() => setIsSyncing(false), 1500);
     }
-  }
+  };
 
-  //--------------------------------------------------------
-  // JSX
-  //--------------------------------------------------------
+  /* ---------------- UI ---------------- */
   return (
     <SafeAreaView style={styles.safeArea}>
-
       <InstructionsModal
         visible={showInstructions}
         onClose={async () => {
@@ -260,16 +200,13 @@ export default function HomeScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Logo */}
         <Image source={require('../../assets/images/homescreenlogo.png')} style={styles.logo} />
 
-        {/* Goal card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Today's Goal</Text>
           <Text style={styles.goalText}>{dailyGoal} oz</Text>
         </View>
 
-        {/* Progress ring */}
         <View style={styles.card}>
           <Circle
             size={180}
@@ -285,16 +222,10 @@ export default function HomeScreen() {
           <Text style={styles.intakeText}>{currentIntake} oz logged today</Text>
         </View>
 
-        {/* Sync Button */}
-        <TouchableOpacity
-          style={[styles.syncButton, isSyncing && { opacity: 0.6 }]}
-          disabled={isSyncing}
-          onPress={handleSync}
-        >
+        <TouchableOpacity style={[styles.syncButton, isSyncing && { opacity: 0.6 }]} disabled={isSyncing} onPress={handleSync}>
           {isSyncing ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sync from Bottle</Text>}
         </TouchableOpacity>
 
-        {/* Battery test button */}
         <TouchableOpacity
           style={[styles.syncButton, { marginTop: 12, backgroundColor: '#888' }]}
           onPress={async () => {
@@ -305,7 +236,6 @@ export default function HomeScreen() {
           <Text style={{ color: '#fff', fontWeight: 'bold' }}>Test Battery Read</Text>
         </TouchableOpacity>
 
-        {/* Hot-weather advisory */}
         {isHot && (
           <View style={styles.alertCard}>
             <Text style={styles.alertTitle}>🌡️ Hot Weather Alert</Text>
@@ -315,32 +245,21 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Placeholder battery indicator */}
-        {batteryLevel !== null && (
-          <Text style={styles.batteryText}>🔋 {batteryLevel}% battery remaining</Text>
-        )}
+        {batteryLevel !== null && <Text style={styles.batteryText}>🔋 {batteryLevel}% battery remaining</Text>}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-/*--------------------------------------------------
-  Styles
---------------------------------------------------*/
+/* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F2FAFC' },
-  container: {
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 60,
-  },
-  logo: { width: 180, height: 180, resizeMode: 'contain', marginBottom: 0 },
+  container: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 60 },
+  logo:      { width: 180, height: 180, resizeMode: 'contain' },
 
   card: {
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     borderRadius: 24,
     paddingVertical: 24,
@@ -352,15 +271,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  cardTitle: { fontSize: 20, fontWeight: '600', color: '#555', marginBottom: 8 },
-  goalText: { fontSize: 32, fontWeight: 'bold', color: '#41b8d5' },
+  cardTitle:  { fontSize: 20, fontWeight: '600', color: '#555', marginBottom: 8 },
+  goalText:   { fontSize: 32, fontWeight: 'bold', color: '#41b8d5' },
   intakeText: { marginTop: 18, fontSize: 18, fontWeight: '500', color: '#555', textAlign: 'center' },
 
   syncButton: { backgroundColor: '#41b8d5', padding: 12, borderRadius: 10, marginTop: 20, alignItems: 'center' },
 
   alertCard: {
     width: '100%',
-    backgroundColor: 'rgba(130, 181, 200, 0.25)',
+    backgroundColor: 'rgba(130,181,200,0.25)',
     borderRadius: 24,
     padding: 20,
     alignItems: 'center',
@@ -372,7 +291,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   alertTitle: { fontSize: 18, fontWeight: '700', color: '#0c5460', marginBottom: 6 },
-  alertText: { fontSize: 15, color: '#0c5460', lineHeight: 20, textAlign: 'center' },
+  alertText:  { fontSize: 15, color: '#0c5460', lineHeight: 20, textAlign: 'center' },
 
   batteryText: { fontSize: 14, color: '#555', marginTop: 6, marginBottom: 20, textAlign: 'center' },
 });
