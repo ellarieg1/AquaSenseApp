@@ -204,14 +204,33 @@ export default function HomeScreen() {
       const increase = mlRemaining - lastMlRemaining;  // refill
 
       if (delta > NOISE_ML) {
-        const oz = Number((delta * 0.033814).toFixed(2));
-        setCurrentIntake((prev) => {
-          const next = Number((prev + oz).toFixed(2));
-          AsyncStorage.setItem(TODAY_CONSUMED_KEY, String(next)).catch(() => {});
-          return next;
-        });
-        await setBaseline(mlRemaining);
-        Alert.alert('Logged', `You drank ${oz} oz (${delta} mL).`);
+  const oz = Number((delta * 0.033814).toFixed(2));
+
+  setCurrentIntake((prev) => {
+    const next = Number((prev + oz).toFixed(2));
+    AsyncStorage.setItem(TODAY_CONSUMED_KEY, String(next)).catch(() => {});
+    return next;
+  });
+
+  /* ---------- Supabase: write one log row ---------- */
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    try {
+      await supabase.from('hydration_logs').insert({
+        user_id: user.id,
+        date: new Date().toISOString(),
+        intake_ml: Math.round(delta),
+      });
+    } catch (e) {
+      console.warn('Supabase log failed – will retry next sync', e);
+    }
+  }
+  /* -------------------------------------------------- */
+
+  await setBaseline(mlRemaining);
+  Alert.alert('Logged', `You drank ${oz} oz (${delta} mL).`);
+}
+
       } else if (increase > REFILL_ML) {
         await setBaseline(mlRemaining);
         Alert.alert('Bottle Refilled', 'Baseline reset. Remember to sync after drinking and before refilling.');
