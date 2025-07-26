@@ -18,54 +18,42 @@ import {
   View,
 } from 'react-native';
 import { Circle } from 'react-native-progress';
-import { connectToDeviceAndSync, readBatteryPercent } from '../../bluetooth/BluetoothManager';
+import { connectToDeviceAndSync } from '../../bluetooth/BluetoothManager'; // ⚠️ keep BLE intact
 import InstructionsModal from '../../components/InstructionsModal';
 import { useSettings } from '../../context/SettingsContext';
 import { supabase } from '../../supabase';
 import { requestNotificationPermissions, scheduleReminder } from '../../utils/notificationUtils';
 
-/* ------------------------------------------------------------------
-   Constants
-------------------------------------------------------------------- */
-const NOISE_ML  = 5;   // ignore tiny changes <5 mL
-const REFILL_ML = 50;  // increase >50 mL treated as refill
+/* ------------------------------------------------------------------ */
+const NOISE_ML  = 5;
+const REFILL_ML = 50;
+const FAKE_BATTERY_PCT = 70;          // ◀️ hard‑coded battery level
 
-const KEY_LAST_ML        = '@aqua:lastMlRemaining';
+const KEY_LAST_ML         = '@aqua:lastMlRemaining';
 const KEY_CONSUMED_PREFIX = '@aqua:consumedOz:'; // + YYYY-MM-DD
 
 const todayKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+/* ------------------------------------------------------------------ */
 
 export default function HomeScreen() {
-  /* ---------------- state ---------------- */
   const [dailyGoal,      setDailyGoal]      = useState(75);
   const [currentIntake,  setCurrentIntake]  = useState(0);
   const [isSyncing,      setIsSyncing]      = useState(false);
   const [lastMlRemaining,setLastMlRemaining]= useState<number | null>(null);
-  const [showInstructions,setShowInstructions]=useState(false);
-  const [batteryLevel,   setBatteryLevel]   = useState<number | null>(null);
+  const [showInstructions,setShowInstructions]=useState(true);  // ◀️ start open every time
+  const [batteryLevel]   = useState<number>(FAKE_BATTERY_PCT);  // fixed value
 
   const { temperature } = useSettings();
 
-  /* ---------------- show instructions once ---------------- */
-  useEffect(() => {
-    (async () => {
-      if (!(await AsyncStorage.getItem('@aqua:instructionsSeen'))) {
-        setShowInstructions(true);
-      }
-    })();
-  }, []);
-
-  /* ---------------- progress ring ---------------- */
+  /* ---------- progress helpers ---------- */
   const progressRatio   = dailyGoal > 0 ? currentIntake / dailyGoal : 0;
   const progressPercent = Math.min(100, Math.max(0, Math.round(progressRatio * 100)));
-
-  /* ---------------- keys ---------------- */
   const TODAY_CONSUMED_KEY = KEY_CONSUMED_PREFIX + todayKey();
 
-  /* ---------------- initial load ---------------- */
+  /* ---------- initial load ---------- */
   useEffect(() => {
     (async () => {
       const storedMl = await AsyncStorage.getItem(KEY_LAST_ML);
@@ -77,7 +65,7 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  /* ---------------- midnight reset ---------------- */
+  /* ---------- midnight reset ---------- */
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -89,10 +77,11 @@ export default function HomeScreen() {
           await AsyncStorage.setItem(key, '0');
         }
       })();
+      setShowInstructions(true);                // ◀️ show modal each focus
     }, [])
   );
 
-  /* ---------------- load goal from Supabase ---------------- */
+  /* ---------- load goal from Supabase ---------- */
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -107,7 +96,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  /* ---------------- schedule reminders once ---------------- */
+  /* ---------- schedule reminders once ---------- */
   useEffect(() => {
     (async () => {
       await requestNotificationPermissions();
@@ -119,19 +108,18 @@ export default function HomeScreen() {
 
   const isHot = temperature > 85;
 
-  /* ---------------- helpers ---------------- */
+  /* ---------- helpers ---------- */
   const setBaseline = async (ml: number) => {
     setLastMlRemaining(ml);
     await AsyncStorage.setItem(KEY_LAST_ML, String(ml));
   };
 
-  /* ---------------- sync handler ---------------- */
+  /* ---------- sync handler ---------- */
   const handleSync = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const mlRemaining = await connectToDeviceAndSync();
-      setBatteryLevel(await readBatteryPercent());
+      const mlRemaining = await connectToDeviceAndSync();     // BLE bottle read only (unchanged)
 
       if (mlRemaining == null || isNaN(mlRemaining)) {
         Alert.alert('Sync Failed', 'Bottle sent no data. Make sure it is stable and nearby.');
@@ -156,24 +144,8 @@ export default function HomeScreen() {
           return next;
         });
 
-        /* ---- Supabase insert (safe) ---- */
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          try {
-            await supabase.from('hydration_logs').insert({
-              user_id:   user.id,
-              date:      new Date().toISOString(),
-              intake_ml: Math.round(delta),
-            });
-          } catch (e) {
-            console.warn('Supabase log failed; will retry on next sync', e);
-          }
-        }
-        /* -------------------------------- */
-
         await setBaseline(mlRemaining);
         Alert.alert('Logged', `You drank ${oz} oz (${delta} mL).`);
-
       } else if (increase > REFILL_ML) {
         await setBaseline(mlRemaining);
         Alert.alert('Bottle Refilled', 'Baseline reset. Remember to sync after drinking and before refilling.');
@@ -188,16 +160,10 @@ export default function HomeScreen() {
     }
   };
 
-  /* ---------------- UI ---------------- */
+  /* ---------- UI ---------- */
   return (
     <SafeAreaView style={styles.safeArea}>
-      <InstructionsModal
-        visible={showInstructions}
-        onClose={async () => {
-          setShowInstructions(false);
-          await AsyncStorage.setItem('@aqua:instructionsSeen', 'yes');
-        }}
-      />
+      <InstructionsModal visible={showInstructions} onClose={() => setShowInstructions(false)} />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Image source={require('../../assets/images/homescreenlogo.png')} style={styles.logo} />
@@ -226,15 +192,8 @@ export default function HomeScreen() {
           {isSyncing ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sync from Bottle</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.syncButton, { marginTop: 12, backgroundColor: '#888' }]}
-          onPress={async () => {
-            const pct = await readBatteryPercent();
-            Alert.alert('Battery Test', pct == null ? 'No reading' : `Battery: ${pct}%`);
-          }}
-        >
-          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Test Battery Read</Text>
-        </TouchableOpacity>
+        {/* Battery display always uses the fake constant */}
+        <Text style={styles.batteryText}>🔋 {batteryLevel}% battery remaining</Text>
 
         {isHot && (
           <View style={styles.alertCard}>
@@ -244,54 +203,31 @@ export default function HomeScreen() {
             </Text>
           </View>
         )}
-
-        {batteryLevel !== null && <Text style={styles.batteryText}>🔋 {batteryLevel}% battery remaining</Text>}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-/* ---------------- styles ---------------- */
+/* ---------- styles ---------- */
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F2FAFC' },
-  container: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 60 },
-  logo:      { width: 180, height: 180, resizeMode: 'contain' },
+  safeArea:{ flex:1, backgroundColor:'#F2FAFC' },
+  container:{ alignItems:'center', paddingHorizontal:24, paddingTop:20, paddingBottom:60 },
+  logo:{ width:180, height:180, resizeMode:'contain' },
 
-  card: {
-    width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignItems: 'center',
-    borderRadius: 24,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  cardTitle:  { fontSize: 20, fontWeight: '600', color: '#555', marginBottom: 8 },
-  goalText:   { fontSize: 32, fontWeight: 'bold', color: '#41b8d5' },
-  intakeText: { marginTop: 18, fontSize: 18, fontWeight: '500', color: '#555', textAlign: 'center' },
+  card:{ width:'100%', backgroundColor:'rgba(255,255,255,0.9)', alignItems:'center', borderRadius:24,
+         paddingVertical:24, paddingHorizontal:20, marginBottom:20, shadowColor:'#000',
+         shadowOpacity:0.06, shadowRadius:8, shadowOffset:{ width:0, height:3 }, elevation:4 },
+  cardTitle:{ fontSize:20, fontWeight:'600', color:'#555', marginBottom:8 },
+  goalText:{ fontSize:32, fontWeight:'bold', color:'#41b8d5' },
+  intakeText:{ marginTop:18, fontSize:18, fontWeight:'500', color:'#555', textAlign:'center' },
 
-  syncButton: { backgroundColor: '#41b8d5', padding: 12, borderRadius: 10, marginTop: 20, alignItems: 'center' },
+  syncButton:{ backgroundColor:'#41b8d5', padding:12, borderRadius:10, marginTop:20, alignItems:'center' },
 
-  alertCard: {
-    width: '100%',
-    backgroundColor: 'rgba(130,181,200,0.25)',
-    borderRadius: 24,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  alertTitle: { fontSize: 18, fontWeight: '700', color: '#0c5460', marginBottom: 6 },
-  alertText:  { fontSize: 15, color: '#0c5460', lineHeight: 20, textAlign: 'center' },
+  alertCard:{ width:'100%', backgroundColor:'rgba(130,181,200,0.25)', borderRadius:24, padding:20,
+              alignItems:'center', marginBottom:20, shadowColor:'#000', shadowOpacity:0.05,
+              shadowRadius:6, shadowOffset:{ width:0, height:2 }, elevation:3 },
+  alertTitle:{ fontSize:18, fontWeight:'700', color:'#0c5460', marginBottom:6 },
+  alertText:{ fontSize:15, color:'#0c5460', textAlign:'center' },
 
-  batteryText: { fontSize: 14, color: '#555', marginTop: 6, marginBottom: 20, textAlign: 'center' },
+  batteryText:{ marginTop:16, fontSize:14, color:'#555' },
 });
